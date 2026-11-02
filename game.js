@@ -89,7 +89,7 @@ const SEGS = [
 ];
 
 function buildBoard() {
-  const nodes = [], jIdx = {}, branch = {}, paths = [];
+  const nodes = [], jIdx = {}, branch = {}, paths = [], seg = {};
   const typeOf = ch => ch === 'L' ? 'S2' : ch;
   for (const [k, [x, y, t]] of Object.entries(JUNCTIONS)) { jIdx[k] = nodes.length; nodes.push({ id: nodes.length, x, y, type: t, next: [], j: true }); }
   for (const s of SEGS) {
@@ -106,9 +106,10 @@ function buildBoard() {
     const chain = [jIdx[s.f], ...ids, jIdx[s.t]];
     for (let i = 0; i < chain.length - 1; i++) nodes[chain[i]].next.push(chain[i + 1]);
     if (s.label) branch[jIdx[s.f] + '>' + ids[0]] = s.label;
+    seg[jIdx[s.f] + '>' + ids[0]] = chain;
     paths.push(chain);
   }
-  return { nodes, branch, paths, start: jIdx.J0 };
+  return { nodes, branch, paths, seg, start: jIdx.J0 };
 }
 const BOARD = buildBoard();
 const NODES = BOARD.nodes;
@@ -455,9 +456,10 @@ function buildBoardSVG() {
     <g class="centerlogo"><text x="735" y="400" text-anchor="middle" class="cl1">MONC'S</text><text x="735" y="452" text-anchor="middle" class="cl2">SHOW</text></g>
     ${paths.map(d => `<path d="${d}" class="road"/>`).join('')}
     ${paths.map(d => `<path d="${d}" class="road2"/>`).join('')}
+    <g id="brG"></g>
     <g id="arrows"></g>
     ${nodesSVG}
-    <g id="hl"></g><g id="traps"></g><g id="bankpot"></g><g id="starG"></g><g id="tokens"></g>
+    <g id="hl"></g><g id="traps"></g><g id="bankpot"></g><g id="starG"></g><g id="prevG"></g><g id="tokens"></g><g id="stepsG"></g>
   </svg>
   <div id="dicebox" class="hidden"></div>`;
   // setas de direção nas bifurcações
@@ -468,6 +470,82 @@ function buildBoardSVG() {
     ar.push(`<path d="M-7,-7 L5,0 L-7,7" transform="translate(${mx},${my}) rotate(${ang})" class="arrow"/>`);
   }));
   $('#arrows').innerHTML = ar.join('');
+}
+
+const BR_COLORS = ['#22d3ee', '#fb923c', '#a3e635'];
+
+// todas as casas onde o jogador pode cair andando `steps` casas a partir de `from`.
+// ci = índice da opção escolhida na PRIMEIRA bifurcação encontrada (fb).
+function dests(from, steps) {
+  const list = []; let fb = null;
+  const walk = (node, left, ci) => {
+    if (left === 0) { list.push({ end: node, ci }); return; }
+    const nx = NODES[node].next;
+    if (nx.length > 1 && ci == null) fb = node;
+    nx.forEach((id, i) => walk(id, left - 1, ci == null && nx.length > 1 ? i : ci));
+  };
+  walk(from, steps, null);
+  const seen = new Set();
+  return { fb, list: list.filter(d => { const k = d.end + ':' + d.ci; if (seen.has(k)) return false; seen.add(k); return true; }) };
+}
+function spaceDesc(id) {
+  if (id === G.star) return '⭐ Estrela';
+  const t = NODES[id].type, m = finalStretch() ? 2 : 1;
+  const D = { B: `🔵 Azul (+${3 * m})`, R: `🔴 Vermelha (−${3 * m})`, S: '🏁 Início' };
+  let s = D[t] || `${SPACE[t].icon} ${SPACE[t].n}`;
+  if (G.traps[id] !== undefined) s += ' + 🪤 armadilha';
+  return s;
+}
+
+/* ---------- efeitos visuais ---------- */
+const pXY = p => toStage(...tokenPos(p));
+const nXY = id => toStage(NODES[id].x, NODES[id].y);
+function coinFlight(from, to, count) {
+  count = Math.max(1, Math.min(12, count | 0));
+  const fx = $('#fx');
+  for (let i = 0; i < count; i++) {
+    const c = document.createElement('div'); c.className = 'coinfly'; c.textContent = '🪙';
+    c.style.left = from[0] + 'px'; c.style.top = from[1] + 'px'; fx.appendChild(c);
+    const dx = to[0] - from[0], dy = to[1] - from[1], h = -110 - rnd(70), jx = (Math.random() - 0.5) * 50;
+    const a = c.animate([
+      { transform: 'translate(-50%,-50%) scale(.5)', opacity: 0 },
+      { transform: `translate(-50%,-50%) translate(${dx / 2 + jx}px,${dy / 2 + h}px) scale(1.25)`, opacity: 1, offset: 0.5 },
+      { transform: `translate(-50%,-50%) translate(${dx}px,${dy}px) scale(.7)`, opacity: 1 },
+    ], { duration: T(800), delay: T(i * 90), easing: 'ease-in-out', fill: 'forwards' });
+    a.onfinish = () => { c.remove(); SFX.tick(); };
+  }
+  return sleep(T(820 + count * 90));
+}
+function burst(xy, chars, n = 12, spread = 150, cls = '') {
+  const fx = $('#fx');
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement('div'); d.className = 'particle ' + cls;
+    d.textContent = Array.isArray(chars) ? pick(chars) : chars;
+    d.style.left = xy[0] + 'px'; d.style.top = xy[1] + 'px'; fx.appendChild(d);
+    const ang = Math.random() * Math.PI * 2, dist = spread * (0.5 + Math.random() * 0.6);
+    d.animate([
+      { transform: 'translate(-50%,-50%) scale(.3) rotate(0deg)', opacity: 1 },
+      { transform: `translate(-50%,-50%) translate(${Math.cos(ang) * dist}px,${Math.sin(ang) * dist}px) scale(1.1) rotate(${rnd(360) - 180}deg)`, opacity: 0 },
+    ], { duration: T(900 + rnd(400)), easing: 'cubic-bezier(.2,.8,.3,1)', fill: 'forwards' }).onfinish = () => d.remove();
+  }
+}
+function flash(xy, cls) {
+  const d = document.createElement('div'); d.className = 'flash ' + cls;
+  d.style.left = xy[0] + 'px'; d.style.top = xy[1] + 'px';
+  $('#fx').appendChild(d); setTimeout(() => d.remove(), T(1200));
+}
+// anima peões em arco (usado na troca de lugar)
+function arcTokens(moves) {
+  moves.forEach(({ p, from, to }) => {
+    const el = document.querySelector(`#tokens [data-p="${p.id}"]`); if (!el) return;
+    const mx = (from[0] + to[0]) / 2, my = Math.min(from[1], to[1]) - 160;
+    el.animate([
+      { transform: `translate(${from[0]}px,${from[1]}px) scale(1)` },
+      { transform: `translate(${mx}px,${my}px) scale(1.8)`, offset: 0.5 },
+      { transform: `translate(${to[0]}px,${to[1]}px) scale(1)` },
+    ], { duration: T(1100), easing: 'ease-in-out' });
+  });
+  return sleep(T(1100));
 }
 
 function tokenPos(p) {
@@ -498,22 +576,53 @@ function renderBoard() {
     if (!el) {
       el = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       el.setAttribute('data-p', p.id); el.classList.add('token');
-      el.innerHTML = `<circle r="17" fill="${p.color}" stroke="#fff" stroke-width="3"/><text font-size="20" text-anchor="middle" dy="7">${p.emoji}</text>`;
+      el.innerHTML = `<circle class="shieldb" r="27"/><circle r="17" fill="${p.color}" stroke="#fff" stroke-width="3"/><text font-size="20" text-anchor="middle" dy="7">${p.emoji}</text>
+        <g class="inkb"><circle cx="-8" cy="-4" r="9"/><circle cx="7" cy="5" r="7"/><circle cx="9" cy="-9" r="4"/></g>
+        <rect class="iceb" x="-23" y="-23" width="46" height="46" rx="9"/>`;
       tg.appendChild(el);
     }
+    el.classList.toggle('has-shield', p.items.includes('shield'));
+    el.classList.toggle('is-frozen', p.debuff.freeze > 0);
+    el.classList.toggle('is-inked', p.debuff.ink > 0);
     const [x, y] = tokenPos(p);
     el.style.transform = `translate(${x}px, ${y}px) scale(${G.cur === p.id ? 1.3 : 1})`;
     if (G.cur === p.id) tg.appendChild(el);
   });
+  // contador de passos sobre o peão da vez
+  const sg = $('#stepsG');
+  if (cp && G.steps > 0) {
+    const [x, y] = tokenPos(cp);
+    sg.innerHTML = `<g transform="translate(${x},${y - 46})" class="stepsbadge"><circle r="22"/><text dy="9">${G.steps}</text></g>`;
+  } else sg.innerHTML = '';
+  // bifurcação à frente (caminhos coloridos) e preview das casas de destino
+  const pv = G.preview;
+  let br = '', pr = '';
+  if (pv && pv.fb != null) {
+    const fbn = NODES[pv.fb];
+    fbn.next.forEach((id, i) => {
+      const chain = BOARD.seg[pv.fb + '>' + id]; if (!chain) return;
+      const col = BR_COLORS[i % BR_COLORS.length];
+      br += `<path d="${smoothPath(chain.map(k => [NODES[k].x, NODES[k].y]))}" class="brpath" stroke="${col}"/>`;
+      const f = NODES[id], ang = Math.atan2(f.y - fbn.y, f.x - fbn.x);
+      const lx = fbn.x + Math.cos(ang) * 52, ly = fbn.y + Math.sin(ang) * 52;
+      br += `<g transform="translate(${lx},${ly})" class="brtag"><circle r="19" fill="${col}"/><text dy="8">${i + 1}</text></g>`;
+    });
+  }
+  if (pv && cp) pv.list.forEach(d => {
+    const n = NODES[d.end], col = d.ci == null ? '#fde047' : BR_COLORS[d.ci % BR_COLORS.length];
+    pr += `<g transform="translate(${n.x},${n.y})" class="ghost"><circle r="31" class="ghostring" stroke="${col}"/><circle r="17" fill="${cp.color}" opacity=".45"/><text dy="7" font-size="20" text-anchor="middle" opacity=".7">${cp.emoji}</text>
+      <g transform="translate(0,-44)"><rect x="-18" y="-16" width="36" height="28" rx="10" fill="${col}"/><text dy="5" font-size="16" text-anchor="middle">🎯</text></g></g>`;
+  });
+  $('#brG').innerHTML = br; $('#prevG').innerHTML = pr;
 }
 
 function renderSide() {
   if (!G || G.phase === 'lobby' || !$('#plist')) return;
   const list = G.order.length ? G.order.map(P).filter(Boolean) : G.players;
   $('#plist').innerHTML = list.map(p => `
-    <div class="pcard ${G.cur === p.id ? 'cur' : ''} ${p.online ? '' : 'off'}" style="--pc:${p.color}">
+    <div class="pcard ${G.cur === p.id ? 'cur' : ''} ${p.online ? '' : 'off'} ${p.items.includes('shield') ? 'shielded' : ''} ${p.debuff.freeze ? 'frozen' : ''} ${p.debuff.ink ? 'inked' : ''}" style="--pc:${p.color}">
       <div class="prank">${rankOf(p)}º</div>
-      <div class="pav" style="background:${p.color}">${p.emoji}</div>
+      <div class="pav" style="background:${p.color}">${p.emoji}${p.items.includes('shield') ? '<span class="shbadge">🛡️</span>' : ''}</div>
       <div class="pinfo"><div class="pname">${esc(p.name)}${p.online ? '' : ' <span class="offtag">offline</span>'}</div>
         <div class="pitems">${p.items.map(k => `<span title="${ITEMS[k].n}">${ITEMS[k].e}</span>`).join('') || '<span class="none">sem itens</span>'}${p.debuff.ink ? '<span class="deb">🦑</span>' : ''}${p.debuff.freeze ? '<span class="deb">🧊</span>' : ''}</div></div>
       <div class="pstats"><div class="pstar">⭐ ${p.stars}</div><div class="pcoin">🪙 ${p.coins}</div></div>
@@ -712,6 +821,7 @@ async function playerTurn(p) {
 let diceTimer = null;
 function diceIdle(p, n) {
   const db = $('#dicebox'); db.classList.remove('hidden');
+  placeDice(p);
   db.innerHTML = `<div class="dwho" style="--pc:${p.color}">${p.emoji} ${esc(p.name)}</div><div class="dice-row">${Array.from({ length: n }, () => `<div class="die rolling">?</div>`).join('')}</div><div class="dhint">👆 Toque em <b>ROLAR</b> no celular</div>`;
   clearInterval(diceTimer);
   diceTimer = setInterval(() => { db.querySelectorAll('.die.rolling').forEach(d => d.textContent = 1 + rnd(10)); }, 90);
@@ -730,44 +840,61 @@ function diceSteps(n) { const h = $('#dicebox .dhint'); if (h) h.innerHTML = `Fa
 function diceHide() { clearInterval(diceTimer); $('#dicebox').classList.add('hidden'); }
 
 /* ---------- movimento ---------- */
+function setPreview(p, left) { G.steps = left; G.preview = left > 0 ? dests(p.node, left) : null; renderBoard(); placeDice(p); }
+
+// coloca a caixa do dado no espaço livre mais longe do jogador e das casas de destino
+const DICE_SPOTS = [[300, 470], [770, 430]];
+function placeDice(p) {
+  const db = $('#dicebox'); if (!db || !p) return;
+  const pts = [[NODES[p.node].x, NODES[p.node].y]];
+  if (G.preview) { G.preview.list.forEach(d => pts.push([NODES[d.end].x, NODES[d.end].y])); if (G.preview.fb != null) pts.push([NODES[G.preview.fb].x, NODES[G.preview.fb].y]); }
+  let best = DICE_SPOTS[0], bd = -1;
+  DICE_SPOTS.forEach(sp => { const d = Math.min(...pts.map(q => Math.hypot(q[0] - sp[0], q[1] - sp[1]))); if (d > bd) { bd = d; best = sp; } });
+  db.style.left = best[0] * BS + 'px'; db.style.top = best[1] * BS + 'px';
+}
+
 async function move(p, steps) {
   let left = steps;
+  setPreview(p, left);
+  await sleep(T(900));            // dá tempo de ver onde pode cair
   while (left > 0) {
     diceSteps(left);
     const node = NODES[p.node];
     let nx = node.next[0];
     if (node.next.length > 1) {
-      const opts = node.next.map(id => ({ id, label: BOARD.branch[node.id + '>' + id] || 'Seguir' }));
-      highlightChoices(opts);
+      const pv = dests(p.node, left);
+      const opts = node.next.map((id, i) => ({
+        id, color: BR_COLORS[i % BR_COLORS.length],
+        label: BOARD.branch[node.id + '>' + id] || 'Seguir',
+        land: [...new Set(pv.list.filter(d => d.ci === i).map(d => d.end))],
+      }));
+      branchLegend(opts, left);
       say(`${p.name}, escolha o caminho!`);
-      const r = await ask(p, { screen: 'choose', title: '🔀 Escolha o caminho', sub: `Faltam ${left} casas`, opts: opts.map(o => ({ label: o.label })) }, T(25000), { i: rnd(opts.length) }, '👍 Caminho escolhido');
+      const r = await ask(p, { screen: 'choose', title: '🔀 Escolha o caminho', sub: `Faltam ${left} casas · as cores são as mesmas da TV`,
+        opts: opts.map((o, i) => ({ label: `${i + 1} · ${o.label}`, sub: 'Você cai em: ' + o.land.map(spaceDesc).join(' ou '), color: o.color })) },
+        T(25000), { i: rnd(opts.length) }, '👍 Caminho escolhido');
       nx = (opts[r && r.i] || opts[0]).id;
-      $('#arrows').querySelectorAll('.choice').forEach(e => e.remove());
       waitUI(p, '🚶 Andando…');
     }
     p.node = nx; left--;
-    SFX.step(); renderBoard();
-    await sleep(T(320));
+    SFX.step(); setPreview(p, left);
+    await sleep(T(340));
     if (p.node === G.star) { await offerStar(p, left === 0); if (left === 0) p._onStar = true; }
     else if (left > 0 && NODES[p.node].type === 'K') bankPass(p);
   }
   diceSteps(0);
+  G.steps = 0; G.preview = null; renderBoard();
 }
 
-function highlightChoices(opts) {
-  const g = $('#arrows');
-  opts.forEach((o, i) => {
-    const n = NODES[o.id];
-    const el = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    el.classList.add('choice');
-    el.innerHTML = `<circle cx="${n.x}" cy="${n.y}" r="30" class="choicering"/><text x="${n.x}" y="${n.y - 36}" text-anchor="middle" class="choicetxt">${i + 1}</text>`;
-    g.appendChild(el);
-  });
+function branchLegend(opts, left) {
+  const h = $('#dicebox .dhint'); if (!h) return;
+  h.innerHTML = `<div class="legend-t">🔀 Escolha no celular · faltam <b>${left}</b></div>` + opts.map((o, i) =>
+    `<div class="legend" style="--bc:${o.color}"><span class="lg-n">${i + 1}</span><span class="lg-l">${esc(o.label)}</span><span class="lg-d">🎯 ${o.land.map(spaceDesc).join(' / ')}</span></div>`).join('');
 }
 
 function bankPass(p) {
   const v = Math.min(2, p.coins);
-  if (v > 0) { addCoins(p, -v); G.bank += v; renderBoard(); }
+  if (v > 0) { coinFlight(pXY(p), nXY(p.node), v); addCoins(p, -v); G.bank += v; renderBoard(); }
 }
 
 async function offerStar(p, landing) {
@@ -781,7 +908,9 @@ async function offerStar(p, landing) {
   say(`${p.name} chegou na estrela! Vai comprar?`);
   const r = await ask(p, { screen: 'choose', title: `⭐ Comprar uma estrela por ${STAR_PRICE} moedas?`, sub: `Você tem ${p.coins} moedas`, opts: [{ label: '⭐ Sim, comprar!' }, { label: 'Não, obrigado' }] }, T(20000), { i: 0 }, '⭐');
   if (r && r.i === 0) {
+    await coinFlight(pXY(p), nXY(G.star), 8);
     addCoins(p, -STAR_PRICE, true); p.stars++;
+    burst(nXY(G.star), ['⭐', '✨', '🌟'], 16, 180);
     SFX.fanfare(); floatText(p, '+1 ⭐', '#fde047');
     overlay(`<div class="starwin"><div class="sw-star">⭐</div><div class="sw-t">${esc(p.name)} ganhou uma estrela!</div><div class="sw-s">Agora tem ${p.stars} ⭐</div></div>`, 'center');
     await say(pick([`${p.name} comprou uma estrela! Que momento!`, `Estrela pra ${p.name}! A plateia vai à loucura!`]), { wait: true });
@@ -808,6 +937,8 @@ async function land(p) {
     if (o) {
       const v = Math.min(5, p.coins);
       SFX.lose();
+      burst(pXY(p), ['🪤', '💥'], 10, 120); flash(pXY(p), 'boom');
+      if (v) await coinFlight(pXY(p), pXY(o), v);
       addCoins(p, -v); addCoins(o, v);
       banner('🪤', `${p.name} caiu na armadilha de ${o.name}!`, `Pagou ${v} moedas`, 2400);
       await say(`Hahaha! ${p.name} caiu na armadilha de ${o.name}! Pagou ${v} moedas!`, { wait: true });
@@ -837,7 +968,7 @@ async function land(p) {
     }
     case 'S2': await shop(p); break;
     case 'K': {
-      const v = G.bank; G.bank = 0; renderBoard();
+      const v = G.bank; if (v) await coinFlight(nXY(p.node), pXY(p), v); G.bank = 0; renderBoard();
       SFX.fanfare();
       addCoins(p, v);
       banner('🏦', `${p.name} caiu no banco!`, `Levou o acumulado: ${v} moedas`, 2600);
@@ -869,7 +1000,7 @@ async function roulette(p) {
       break;
     }
     case 4: {
-      let tot = 0; others(p).forEach(x => { const v = Math.min(2, x.coins); addCoins(x, -v, true); tot += v; });
+      let tot = 0; const fl = []; others(p).forEach(x => { const v = Math.min(2, x.coins); if (v) fl.push(coinFlight(pXY(x), pXY(p), v)); addCoins(x, -v, true); tot += v; }); await Promise.all(fl);
       addCoins(p, tot);
       await say(`Todo mundo paga duas moedas pra ${p.name}! Dói no bolso, né?`, { wait: true }); break;
     }
@@ -949,7 +1080,7 @@ async function villain(p) {
     case 0: addCoins(p, -8); await say(`Oito moedas a menos! Muahaha!`, { wait: true }); break;
     case 1: {
       const lastR = G.players.slice().sort((a, b) => rankOf(b) - rankOf(a)).find(x => x.id !== p.id);
-      const v = Math.min(5, p.coins); addCoins(p, -v); addCoins(lastR, v);
+      const v = Math.min(5, p.coins); if (v) await coinFlight(pXY(p), pXY(lastR), v); addCoins(p, -v); addCoins(lastR, v);
       await say(`${p.name} dá ${v} moedas para ${lastR.name}! Robin Hood ao contrário... ou não!`, { wait: true }); break;
     }
     case 2: placeStar(G.star); SFX.whoosh(); renderBoard(); await say(`A estrela fugiu para outro lugar! Todo mundo vai ter que correr atrás!`, { wait: true }); break;
@@ -959,7 +1090,7 @@ async function villain(p) {
       break;
     }
     case 4: {
-      if (lastP.id !== p.id) { const a = p.coins, b = lastP.coins; p.coins = b; lastP.coins = a; SFX.whoosh(); floatText(p, '🔁', '#fff'); renderSide(); scheduleSync(); await say(`${p.name} trocou todas as moedas com ${lastP.name}! Que reviravolta!`, { wait: true }); }
+      if (lastP.id !== p.id) { await Promise.all([coinFlight(pXY(p), pXY(lastP), 6), coinFlight(pXY(lastP), pXY(p), 6)]); const a = p.coins, b = lastP.coins; p.coins = b; lastP.coins = a; SFX.whoosh(); floatText(p, '🔁', '#fff'); renderSide(); scheduleSync(); await say(`${p.name} trocou todas as moedas com ${lastP.name}! Que reviravolta!`, { wait: true }); }
       else { addCoins(p, -5); await say(`Você já é o mais pobre... então perde cinco moedas!`, { wait: true }); }
       break;
     }
@@ -978,6 +1109,11 @@ async function useItem(p, k) {
     if (!v || v.id === p.id) return false;
     removeItem(p, k); p.stats.attacks++;
     if (v.items.includes('shield')) {
+      SFX.whoosh();
+      const tok = document.querySelector(`#tokens [data-p="${v.id}"]`); if (tok) tok.classList.add('shield-hit');
+      flash(pXY(v), 'shield'); burst(pXY(v), ['🛡️', '✨', '💥'], 14, 170);
+      await sleep(T(700));
+      if (tok) tok.classList.remove('shield-hit');
       removeItem(v, 'shield');
       SFX.pop();
       banner('🛡️', `${v.name} tinha ESCUDO!`, `O ${it.n} de ${p.name} foi bloqueado`, 2600);
@@ -985,16 +1121,16 @@ async function useItem(p, k) {
       return true;
     }
     switch (k) {
-      case 'ink': v.debuff.ink = 3; banner('🦑', `${p.name} jogou tinta em ${v.name}!`, 'A tela vai ficar manchada no próximo quiz', 2600); await say(`Splash! ${p.name} jogou tinta em ${v.name}! Boa sorte enxergando as respostas!`, { wait: true }); break;
-      case 'freeze': v.debuff.freeze = 3; banner('🧊', `${p.name} congelou ${v.name}!`, '3 segundos travado no próximo quiz', 2600); await say(`Brrr! ${v.name} foi congelado por ${p.name}! Vai começar o quiz atrasado!`, { wait: true }); break;
-      case 'hook': { const amt = Math.min(6, v.coins); addCoins(v, -amt); addCoins(p, amt); banner('🪝', `${p.name} fisgou ${amt} moedas de ${v.name}!`, '', 2400); await say(`Gancho! ${p.name} roubou ${amt} moedas de ${v.name}!`, { wait: true }); break; }
-      case 'swap': { const a = p.node; p.node = v.node; v.node = a; SFX.whoosh(); renderBoard(); banner('🔄', `${p.name} trocou de lugar com ${v.name}!`, '', 2400); await say(`Troca-troca! ${p.name} e ${v.name} trocaram de lugar!`, { wait: true }); break; }
+      case 'ink': SFX.whoosh(); burst(pXY(v), ['●', '●', '💧'], 18, 160, 'ink'); flash(pXY(v), 'ink'); v.debuff.ink = 3; renderSide(); banner('🦑', `${p.name} jogou tinta em ${v.name}!`, 'A tela vai ficar manchada no próximo quiz', 2600); await say(`Splash! ${p.name} jogou tinta em ${v.name}! Boa sorte enxergando as respostas!`, { wait: true }); break;
+      case 'freeze': SFX.whoosh(); burst(pXY(v), ['❄️', '❄️', '🧊', '✨'], 18, 170); flash(pXY(v), 'ice'); v.debuff.freeze = 3; renderSide(); banner('🧊', `${p.name} congelou ${v.name}!`, '3 segundos travado no próximo quiz', 2600); await say(`Brrr! ${v.name} foi congelado por ${p.name}! Vai começar o quiz atrasado!`, { wait: true }); break;
+      case 'hook': { const amt = Math.min(6, v.coins); burst(pXY(v), '🪝', 1, 10); if (amt) await coinFlight(pXY(v), pXY(p), amt); addCoins(v, -amt); addCoins(p, amt); banner('🪝', `${p.name} fisgou ${amt} moedas de ${v.name}!`, '', 2400); await say(`Gancho! ${p.name} roubou ${amt} moedas de ${v.name}!`, { wait: true }); break; }
+      case 'swap': { const fp = tokenPos(p), fv = tokenPos(v); const a = p.node; p.node = v.node; v.node = a; SFX.whoosh(); renderBoard(); await arcTokens([{ p, from: fp, to: tokenPos(p) }, { p: v, from: fv, to: tokenPos(v) }]); burst(pXY(p), '✨', 8, 90); burst(pXY(v), '✨', 8, 90); banner('🔄', `${p.name} trocou de lugar com ${v.name}!`, '', 2400); await say(`Troca-troca! ${p.name} e ${v.name} trocaram de lugar!`, { wait: true }); break; }
     }
     renderSide(); return true;
   }
   if (k === 'trap') {
     if (G.traps[p.node] !== undefined) return false;
-    removeItem(p, k); G.traps[p.node] = p.id; p.stats.attacks++; renderBoard();
+    removeItem(p, k); G.traps[p.node] = p.id; p.stats.attacks++; renderBoard(); burst(pXY(p), ['🪤', '✨'], 8, 90);
     banner('🪤', `${p.name} armou uma armadilha!`, 'Quem cair nessa casa paga 5 moedas', 2200);
     await say(`${p.name} deixou uma armadilha escondida... cuidado onde pisam!`);
     return true;
@@ -1044,7 +1180,7 @@ async function duel(p) {
   if (winner) {
     const loser = winner === p ? o : p;
     SFX.fanfare();
-    if (bet) { const v = Math.min(bet, loser.coins); addCoins(loser, -v); addCoins(winner, v); }
+    if (bet) { const v = Math.min(bet, loser.coins); if (v) await coinFlight(pXY(loser), pXY(winner), v); addCoins(loser, -v); addCoins(winner, v); }
     else addCoins(winner, 3);
     banner('🏆', `${winner.name} venceu o duelo!`, bet ? `Levou ${bet} moedas de ${loser.name}` : '+3 moedas', 2600);
     await say(pick([`${winner.name} venceu o duelo! ${loser.name}, vai ter revanche?`, `Vitória de ${winner.name}! Que duelo!`]), { wait: true });
@@ -1532,7 +1668,7 @@ function renderPhoneUI(ui) {
       break;
     case 'choose':
       main.innerHTML = `<div class="pchoose"><div class="pc-t">${esc(ui.title)}</div>${ui.sub ? `<div class="pc-s">${esc(ui.sub)}</div>` : ''}${timerHTML()}
-        <div class="plist ${ui.grid ? 'grid' : ''}">${ui.opts.map((o, i) => `<button class="popt" data-i="${i}" ${o.dis ? 'disabled' : ''}><b>${esc(o.label)}</b>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</button>`).join('')}</div>
+        <div class="plist ${ui.grid ? 'grid' : ''}">${ui.opts.map((o, i) => `<button class="popt ${o.color ? 'colored' : ''}" data-i="${i}" ${o.dis ? 'disabled' : ''} ${o.color ? `style="--bc:${o.color}"` : ''}><b>${esc(o.label)}</b>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</button>`).join('')}</div>
         ${ui.cancel ? `<button class="pcancel" id="cx">Cancelar</button>` : ''}</div>`;
       main.querySelectorAll('.popt').forEach(b => b.onclick = () => { lock(); b.classList.add('chosen'); act({ i: +b.dataset.i }); });
       if (ui.cancel) $('#cx').onclick = () => { lock(); act({ cancel: true }); };

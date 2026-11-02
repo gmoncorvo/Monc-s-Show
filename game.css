@@ -418,3 +418,5 @@ button:disabled{opacity:.5}
 .die{width:100px;height:100px;font-size:60px;border-radius:22px}
 .dwho{font-size:24px;margin-bottom:8px}
 .dhint{font-size:20px;margin-top:10px}
+.bigstar{font-size:60px;filter:drop-shadow(0 0 20px #fde047)}
+.t-T .nbody{stroke:#fde047}

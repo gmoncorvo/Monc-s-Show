@@ -22,7 +22,7 @@ const fmt = n => Number(n).toLocaleString('pt-BR');
 const uid = () => Math.random().toString(36).slice(2, 10);
 const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#f97316', '#ec4899', '#14b8a6'];
 const AVATARS = ['🐶', '🐱', '🦊', '🐼', '🐸', '🦁', '🐵', '🐧', '🦄', '🐙', '🐯', '🐨', '🤖', '👽', '🐲', '🦖'];
-const MAX_PLAYERS = 8, STAR_PRICE = 20, START_COINS = 10;
+const MAX_PLAYERS = 8, STAR_PRICE = 20, START_COINS = 10, STEAL_PRICE = STAR_PRICE * 2;
 const REWARDS = [10, 7, 5, 4, 3, 2, 2, 1];
 const LEVEL_NAME = { f: 'Fácil', m: 'Médio', d: 'Difícil' };
 const LIMIT = { f: 15000, m: 18000, d: 20000 };
@@ -32,7 +32,7 @@ const OPT_SHAPES = ['▲', '◆', '●', '■'];
 const ITEMS = {
   ink:    { n: 'Tinta',        e: '🦑', price: 5, target: true, d: 'Mancha a tela de um rival nas 3 primeiras perguntas do próximo quiz.' },
   freeze: { n: 'Congelar',     e: '🧊', price: 5, target: true, d: 'O rival fica 3s travado nas 3 primeiras perguntas do próximo quiz.' },
-  hook:   { n: 'Gancho',       e: '🪝', price: 6, target: true, d: 'Rouba 6 moedas de um rival.' },
+  hook:   { n: 'Gancho',       e: '🪝', price: 6, target: true, d: 'Rouba 6 moedas de um rival (10 se o alvo for o 1º colocado).' },
   shield: { n: 'Escudo',       e: '🛡️', price: 6, passive: true, d: 'Automático: bloqueia o próximo ataque que você sofrer.' },
   trap:   { n: 'Armadilha',    e: '🪤', price: 6, d: 'Fica na casa onde você está. Quem cair nela te paga 5 moedas.' },
   swap:   { n: 'Troca',        e: '🔄', price: 9, target: true, d: 'Troca de lugar no tabuleiro com um rival.' },
@@ -65,6 +65,7 @@ const SPACE = {
   S2:{ n: 'Loja',     c: '#0d9488', icon: '🛒' },
   K: { n: 'Banco',    c: '#ca8a04', icon: '🏦' },
   V: { n: 'Vilão',    c: '#6d28d9', icon: '😈' },
+  T: { n: 'Ladrão de Estrela', c: '#111827', icon: '🦹' },
 };
 
 /* =========================================================================
@@ -83,7 +84,7 @@ const SEGS = [
   { f: 'J3', t: 'J4', ty: 'BGBEB', label: '⛰️ Volta da serra (mais longo)', pts: [[1100, 380], [1160, 270], [1130, 150], [1010, 70], [880, 120]] },
   { f: 'J3', t: 'J4', ty: 'VRE', label: '🌑 Atalho sombrio (curto, mas tem vilão!)', pts: [[1100, 380], [980, 350], [900, 260], [880, 120]] },
   { f: 'J4', t: 'J5', ty: 'BRKBD', pts: [[880, 120], [790, 55], [690, 120], [590, 55], [500, 110]] },
-  { f: 'J5', t: 'J6', ty: 'EBLBR', label: '⬅️ Seguir pela trilha', pts: [[500, 110], [400, 175], [290, 105], [190, 170], [140, 300]] },
+  { f: 'J5', t: 'J6', ty: 'ETLBR', label: '⬅️ Seguir pela trilha', pts: [[500, 110], [400, 175], [290, 105], [190, 170], [140, 300]] },
   { f: 'J6', t: 'J0', ty: 'BDGB', pts: [[140, 300], [60, 390], [95, 500], [55, 600], [100, 680]] },
   { f: 'J5', t: 'J1', ty: 'REVBGB', label: '↩️ Retorno pelo centro', pts: [[500, 110], [470, 230], [570, 330], [450, 430], [560, 560], [520, 700]] },
 ];
@@ -357,6 +358,16 @@ function giveItem(p, k) {
 }
 function removeItem(p, k) { const i = p.items.indexOf(k); if (i >= 0) p.items.splice(i, 1); renderSide(); scheduleSync(); }
 const finalStretch = () => G.turn > G.maxTurns - 3;
+// quem está atrás tem mais chance de ganhar itens de ataque/recuperação; quem lidera, itens de defesa
+const ITEM_W_BACK = { hook: 4, swap: 3, gold: 3, double: 3, ink: 2, freeze: 2, trap: 1, shield: 1 };
+const ITEM_W_FRONT = { shield: 3, trap: 3, ink: 2, freeze: 2, hook: 1, double: 1, gold: 1, swap: 1 };
+function randomItemFor(p) {
+  const n = G.players.length, back = n > 1 && rankOf(p) > Math.ceil(n / 2);
+  const W = back ? ITEM_W_BACK : ITEM_W_FRONT;
+  let t = Math.random() * Object.values(W).reduce((a, b) => a + b, 0);
+  for (const [k, w] of Object.entries(W)) { t -= w; if (t <= 0) return k; }
+  return 'hook';
+}
 
 function placeStar(avoid) {
   const cands = NODES.filter(n => !n.j && n.type !== 'S' && n.id !== avoid && !G.traps[n.id]);
@@ -779,9 +790,19 @@ async function turnIntro() {
     addCoins(last, 10);
     await sleep(T(800));
   } else {
+    if (G.turn > 1) await comebackBonus();
     banner('🎲', `TURNO ${G.turn} DE ${G.maxTurns}`, G.turn === G.maxTurns ? 'Último turno!' : '', 1800);
     await say(G.turn === G.maxTurns ? 'Último turno! É agora ou nunca!' : pick([`Turno ${G.turn}! Vamos nessa!`, `Começando o turno ${G.turn}!`, `Turno ${G.turn}. Quem vai brilhar?`]));
   }
+}
+
+async function comebackBonus() {
+  const n = G.players.length; if (n < 2) return;
+  const byRank = G.players.slice().sort((a, b) => rankOf(b) - rankOf(a));
+  const ps = byRank.slice(0, n >= 4 ? 2 : 1).filter(p => rankOf(p) > 1);
+  if (!ps.length) return;
+  ps.forEach(p => addCoins(p, 3));
+  await say(`Ajudinha da produção: ${ps.map(p => p.name).join(' e ')} ${ps.length > 1 ? 'ganham' : 'ganha'} três moedas pra correr atrás!`);
 }
 
 const usableItems = p => [...new Set(p.items)].filter(k => !ITEMS[k].passive && !(k === 'trap' && G.traps[p.node] !== undefined));
@@ -959,7 +980,7 @@ async function land(p) {
     case 'E': await roulette(p); break;
     case 'D': await duel(p); break;
     case 'G': {
-      const k = pick(ITEM_KEYS);
+      const k = randomItemFor(p);
       SFX.pop();
       const ok = giveItem(p, k);
       banner('🎁', `${p.name} ganhou um presente!`, ok ? `${ITEMS[k].e} ${ITEMS[k].n}` : 'Mochila cheia: virou 3 moedas', 2400);
@@ -976,6 +997,7 @@ async function land(p) {
       break;
     }
     case 'V': await villain(p); break;
+    case 'T': await thief(p); break;
     default: break;
   }
 }
@@ -992,7 +1014,7 @@ async function roulette(p) {
   switch (idx) {
     case 0: addCoins(p, 6); await say(`Seis moedas pra ${p.name}!`, { wait: true }); break;
     case 1: addCoins(p, -4); await say(`Ai! ${p.name} perdeu quatro moedas!`, { wait: true }); break;
-    case 2: { const k = pick(ITEM_KEYS); const ok = giveItem(p, k); SFX.pop(); banner(ITEMS[k].e, ok ? `${p.name} ganhou ${ITEMS[k].n}` : 'Mochila cheia: +3 moedas', '', 2000); await say(ok ? `${p.name} ganhou ${ITEMS[k].n}!` : `Mochila cheia! Três moedas então.`, { wait: true }); break; }
+    case 2: { const k = randomItemFor(p); const ok = giveItem(p, k); SFX.pop(); banner(ITEMS[k].e, ok ? `${p.name} ganhou ${ITEMS[k].n}` : 'Mochila cheia: +3 moedas', '', 2000); await say(ok ? `${p.name} ganhou ${ITEMS[k].n}!` : `Mochila cheia! Três moedas então.`, { wait: true }); break; }
     case 3: {
       const dest = pick(NODES.filter(n => n.id !== p.node && n.id !== G.star)).id;
       SFX.whoosh(); p.node = dest; renderBoard();
@@ -1064,6 +1086,37 @@ async function shop(p) {
   } else await say(`${p.name} só veio olhar a vitrine.`);
 }
 
+async function thief(p) {
+  SFX.evil();
+  const targets = others(p).filter(o => o.stars > 0);
+  banner('🦹', 'ESCONDERIJO DO LADRÃO', `Por ${STEAL_PRICE} moedas, ${p.name} pode roubar uma estrela!`, 2600, 'hot');
+  if (!targets.length || p.coins < STEAL_PRICE) {
+    const lead = G.players.slice().sort((a, b) => rankOf(a) - rankOf(b)).find(o => o.id !== p.id && o.coins > 0);
+    await say(!targets.length ? `Ninguém tem estrela pra roubar ainda! Mas o ladrão é camarada...` : `Sem ${STEAL_PRICE} moedas, ${p.name}? O ladrão é camarada...`, { wait: true });
+    if (lead) {
+      const v = Math.min(5, lead.coins);
+      await coinFlight(pXY(lead), pXY(p), v); addCoins(lead, -v); addCoins(p, v);
+      await say(`Ele afanou ${v} moedas de ${lead.name} e deu pra ${p.name}!`, { wait: true });
+    }
+    return;
+  }
+  say(`${p.name}, quer pagar ${STEAL_PRICE} moedas para roubar uma estrela? Escolha a vítima!`);
+  const r = await ask(p, { screen: 'pick', title: `🦹 Roubar uma estrela por ${STEAL_PRICE} 🪙?`, sub: 'Escolha de quem roubar (o escudo não protege!)', opts: targets.map(o => ({ id: o.id, name: o.name, emoji: o.emoji, color: o.color, coins: o.coins, stars: o.stars })), cancel: true }, T(30000), null, '🦹');
+  const v = r && r.id && P(r.id);
+  if (!v || !targets.includes(v)) { await say(`${p.name} desistiu do roubo. A consciência falou mais alto!`, { wait: true }); return; }
+  await coinFlight(pXY(p), nXY(p.node), 10);
+  addCoins(p, -STEAL_PRICE, true);
+  // estrela voando da vítima para o ladrão
+  const st = document.createElement('div'); st.className = 'coinfly bigstar'; st.textContent = '⭐';
+  const a0 = pXY(v), a1 = pXY(p); st.style.left = a0[0] + 'px'; st.style.top = a0[1] + 'px'; $('#fx').appendChild(st);
+  st.animate([{ transform: 'translate(-50%,-50%) scale(.5)' }, { transform: `translate(-50%,-50%) translate(${(a1[0] - a0[0]) / 2}px,${(a1[1] - a0[1]) / 2 - 200}px) scale(2.4)`, offset: 0.5 }, { transform: `translate(-50%,-50%) translate(${a1[0] - a0[0]}px,${a1[1] - a0[1]}px) scale(1)` }], { duration: T(1500), easing: 'ease-in-out', fill: 'forwards' });
+  SFX.whoosh(); await sleep(T(1500)); st.remove();
+  v.stars--; p.stars++; p.stats.attacks++;
+  burst(pXY(p), ['⭐', '✨'], 16, 170); SFX.fanfare(); renderSide(); scheduleSync();
+  banner('🦹', `${p.name} roubou uma estrela de ${v.name}!`, `Pagou ${STEAL_PRICE} moedas`, 3000, 'hot');
+  await say(`Que golpe! ${p.name} roubou uma estrela de ${v.name}! Isso vai dar briga!`, { wait: true });
+}
+
 async function villain(p) {
   SFX.evil();
   const outs = [
@@ -1123,7 +1176,7 @@ async function useItem(p, k) {
     switch (k) {
       case 'ink': SFX.whoosh(); burst(pXY(v), ['●', '●', '💧'], 18, 160, 'ink'); flash(pXY(v), 'ink'); v.debuff.ink = 3; renderSide(); banner('🦑', `${p.name} jogou tinta em ${v.name}!`, 'A tela vai ficar manchada no próximo quiz', 2600); await say(`Splash! ${p.name} jogou tinta em ${v.name}! Boa sorte enxergando as respostas!`, { wait: true }); break;
       case 'freeze': SFX.whoosh(); burst(pXY(v), ['❄️', '❄️', '🧊', '✨'], 18, 170); flash(pXY(v), 'ice'); v.debuff.freeze = 3; renderSide(); banner('🧊', `${p.name} congelou ${v.name}!`, '3 segundos travado no próximo quiz', 2600); await say(`Brrr! ${v.name} foi congelado por ${p.name}! Vai começar o quiz atrasado!`, { wait: true }); break;
-      case 'hook': { const amt = Math.min(6, v.coins); burst(pXY(v), '🪝', 1, 10); if (amt) await coinFlight(pXY(v), pXY(p), amt); addCoins(v, -amt); addCoins(p, amt); banner('🪝', `${p.name} fisgou ${amt} moedas de ${v.name}!`, '', 2400); await say(`Gancho! ${p.name} roubou ${amt} moedas de ${v.name}!`, { wait: true }); break; }
+      case 'hook': { const amt = Math.min(rankOf(v) === 1 ? 10 : 6, v.coins); burst(pXY(v), '🪝', 1, 10); if (amt) await coinFlight(pXY(v), pXY(p), amt); addCoins(v, -amt); addCoins(p, amt); banner('🪝', `${p.name} fisgou ${amt} moedas de ${v.name}!`, '', 2400); await say(`Gancho! ${p.name} roubou ${amt} moedas de ${v.name}!`, { wait: true }); break; }
       case 'swap': { const fp = tokenPos(p), fv = tokenPos(v); const a = p.node; p.node = v.node; v.node = a; SFX.whoosh(); renderBoard(); await arcTokens([{ p, from: fp, to: tokenPos(p) }, { p: v, from: fv, to: tokenPos(v) }]); burst(pXY(p), '✨', 8, 90); burst(pXY(v), '✨', 8, 90); banner('🔄', `${p.name} trocou de lugar com ${v.name}!`, '', 2400); await say(`Troca-troca! ${p.name} e ${v.name} trocaram de lugar!`, { wait: true }); break; }
     }
     renderSide(); return true;
@@ -1439,7 +1492,7 @@ async function roundResults(dyn, sc, parts) {
   G.players.filter(p => !win.some(w => w.p === p)).forEach(p => waitUI(p, '🏆 Vencedor escolhendo o item…'));
   if (maxPlace > 1) {
     ranking.filter(r => r.place === maxPlace).forEach(r => {
-      const k = pick(ITEM_KEYS); const ok = giveItem(r.p, k);
+      const k = randomItemFor(r.p); const ok = giveItem(r.p, k);
       const el = $('#ri-' + r.p.id); if (el) el.textContent = ok ? `🎁 ${ITEMS[k].e} ${ITEMS[k].n}` : 'mochila cheia: +3 🪙';
     });
     const last = ranking.filter(r => r.place === maxPlace).map(r => r.p.name).join(' e ');

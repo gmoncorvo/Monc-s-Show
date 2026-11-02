@@ -6,7 +6,8 @@
 const PARAMS = new URLSearchParams(location.search);
 const LOCAL = PARAMS.has('local');         // testes: BroadcastChannel no mesmo navegador
 const FAST = PARAMS.has('fast');
-const LSX = PARAMS.get('p') || '';         // testes: separa o armazenamento de vários 'celulares' no mesmo navegador           // testes: acelera todos os tempos
+const LSX = PARAMS.get('p') || '';
+const ONLINE = PARAMS.has('online');      // modo online: cada um no seu computador         // testes: separa o armazenamento de vários 'celulares' no mesmo navegador           // testes: acelera todos os tempos
 const T = ms => FAST ? Math.max(15, Math.round(ms / 20)) : ms;
 const SUPA_URL = '__SUPA_URL__';
 const SUPA_KEY = '__SUPA_KEY__';
@@ -163,8 +164,8 @@ function buildBoard(map) {
   }
   return { nodes, branch, paths, seg, start: jIdx.J0, map };
 }
-let BOARD = null, NODES = null, MAP = null;
-function loadMap(id) { MAP = MAPS[id] || MAPS.forest; BOARD = buildBoard(MAP); NODES = BOARD.nodes; }
+let BOARD = null, NODES = null, MAP = null, MAP_ID = 'forest';
+function loadMap(id) { MAP_ID = MAPS[id] ? id : 'forest'; MAP = MAPS[MAP_ID]; BOARD = buildBoard(MAP); NODES = BOARD.nodes; }
 loadMap('forest');
 
 /* =========================================================================
@@ -244,6 +245,7 @@ function say(text, opt = {}) {
   const bubble = $('#bubble'), host = $('#host');
   if (bubble) { bubble.textContent = text; bubble.classList.remove('pop'); void bubble.offsetWidth; bubble.classList.add('pop'); }
   const spoken = String(text).replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '').replace(/\s+/g, ' ').trim();
+  mFx('say', [spoken]);
   const est = Math.min(10000, 700 + spoken.length * 62);
   return new Promise(res => {
     let done = false;
@@ -284,6 +286,8 @@ function setUI(p, ui) {
   p.ui = ui; scheduleSync();
 }
 function waitUI(p, msg, sub) { setUI(p, { screen: 'wait', msg, sub }); }
+const SCR = () => (G && G.online ? 'no tabuleiro' : 'na TV');
+const LOOK = () => (G && G.online ? 'Acompanhe no tabuleiro' : 'Olhe para a TV');
 function waitAll(msg, sub, except) { G.players.forEach(p => { if (!except || p.id !== except.id) waitUI(p, msg, sub); }); }
 
 function ask(p, ui, ms, def, ack) {
@@ -309,9 +313,10 @@ function collect(parts, makeUI, ms, onAnswer, ack = '✅ Resposta enviada!') {
     parts.forEach(p => {
       const ui = makeUI(p); ui._ms = ms; setUI(p, ui);
       pending[p.id] = {
-        uid: p.ui.id, gid, ack, resolve: a => {
+        uid: p.ui.id, gid, ack, resolve: (a, el) => {
           if (finished) return;
-          ans[p.id] = { a, t: Math.min(ms, Date.now() - t0) };
+          const t = typeof el === 'number' && el >= 0 && el <= ms + 2000 ? el : Date.now() - t0;
+          ans[p.id] = { a, t: Math.min(ms, t) };
           const stop = onAnswer && onAnswer(p, ans[p.id], ans);
           if (stop || Object.keys(ans).length >= parts.length) finish();
         },
@@ -339,6 +344,7 @@ function sendSync() {
 function onTVMsg(m) {
   if (!m || !G) return;
   if (m.t === 'join') return onJoin(m);
+  if (m.t === 'mreq') { mFullReq(); return; }
   const p = m.pid && P(m.pid);
   if (!p) return;
   p.lastSeen = Date.now();
@@ -349,7 +355,7 @@ function onTVMsg(m) {
     if (!pend || pend.uid !== m.uid) { scheduleSync(); return; }
     delete pending[p.id];
     waitUI(p, pend.ack || '✅ Recebido!');
-    pend.resolve(m.a || {});
+    pend.resolve(m.a || {}, m.el);
   }
 }
 
@@ -435,8 +441,10 @@ const toStage = (x, y) => [BX + x * BS, BY + y * BS];
 
 function fitStage() {
   const st = $('#stage'); if (!st) return;
-  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
-  st.style.transform = `translate(${(innerWidth - 1920 * s) / 2}px, ${(innerHeight - 1080 * s) / 2}px) scale(${s})`;
+  const box = st.parentElement, full = box === document.body;
+  const W = full ? innerWidth : box.clientWidth, H = full ? innerHeight : box.clientHeight;
+  const s = Math.min(W / 1920, H / 1080);
+  st.style.transform = `translate(${(W - 1920 * s) / 2}px, ${(H - 1080 * s) / 2}px) scale(${s})`;
 }
 
 function stageMode(m) { const st = $('#stage'); st.className = 'mode-' + m; }
@@ -456,9 +464,10 @@ function hostSVG() {
   </svg>`;
 }
 
-function buildTV() {
-  document.body.className = 'tv';
-  document.body.innerHTML = `
+function buildTV(container) {
+  const root = container || document.body;
+  if (!container) document.body.className = 'tv';
+  root.innerHTML = `
   <div id="stage" class="mode-lobby">
     <div id="lobby"></div>
     <div id="game">
@@ -564,6 +573,7 @@ function spaceDesc(id) {
 const pXY = p => toStage(...tokenPos(p));
 const nXY = id => toStage(NODES[id].x, NODES[id].y);
 function coinFlight(from, to, count) {
+  mFx('coinFlight', [from, to, count]);
   count = Math.max(1, Math.min(12, count | 0));
   const fx = $('#fx');
   for (let i = 0; i < count; i++) {
@@ -575,11 +585,12 @@ function coinFlight(from, to, count) {
       { transform: `translate(-50%,-50%) translate(${dx / 2 + jx}px,${dy / 2 + h}px) scale(1.25)`, opacity: 1, offset: 0.5 },
       { transform: `translate(-50%,-50%) translate(${dx}px,${dy}px) scale(.7)`, opacity: 1 },
     ], { duration: T(800), delay: T(i * 90), easing: 'ease-in-out', fill: 'forwards' });
-    a.onfinish = () => { c.remove(); SFX.tick(); };
+    a.onfinish = () => { c.remove(); ((SFX._o && SFX._o.tick) || SFX.tick).call(SFX); };
   }
   return sleep(T(820 + count * 90));
 }
 function burst(xy, chars, n = 12, spread = 150, cls = '') {
+  mFx('burst', [xy, chars, n, spread, cls]);
   const fx = $('#fx');
   for (let i = 0; i < n; i++) {
     const d = document.createElement('div'); d.className = 'particle ' + cls;
@@ -593,12 +604,14 @@ function burst(xy, chars, n = 12, spread = 150, cls = '') {
   }
 }
 function flash(xy, cls) {
+  mFx('flash', [xy, cls]);
   const d = document.createElement('div'); d.className = 'flash ' + cls;
   d.style.left = xy[0] + 'px'; d.style.top = xy[1] + 'px';
   $('#fx').appendChild(d); setTimeout(() => d.remove(), T(1200));
 }
 // anima peões em arco (usado na troca de lugar)
 function arcTokens(moves) {
+  mFx('arc', [moves.map(m => ({ id: m.p.id, from: m.from, to: m.to }))]);
   moves.forEach(({ p, from, to }) => {
     const el = document.querySelector(`#tokens [data-p="${p.id}"]`); if (!el) return;
     const mx = (from[0] + to[0]) / 2, my = Math.min(from[1], to[1]) - 160;
@@ -703,6 +716,10 @@ function setConn(st) {
 
 function floatText(p, text, color) {
   const [x, y] = toStage(...tokenPos(p));
+  floatAt(x, y, text, color);
+}
+function floatAt(x, y, text, color) {
+  mFx('floatAt', [x, y, text, color]);
   const d = document.createElement('div');
   d.className = 'floater'; d.textContent = text; d.style.left = x + 'px'; d.style.top = (y - 30) + 'px'; d.style.color = color;
   $('#fx').appendChild(d); setTimeout(() => d.remove(), 1800);
@@ -727,7 +744,7 @@ function closeOverlay() { const o = $('#panel'); if (o) o.remove(); }
 /* =========================================================================
    TV — lobby
    ========================================================================= */
-function joinURL() { return location.origin + location.pathname + '?sala=' + G.room + (LOCAL ? '&local' : '') + (FAST ? '&fast' : ''); }
+function joinURL() { return location.origin + location.pathname + (G.online ? '?online&sala=' : '?sala=') + G.room + (LOCAL ? '&local' : '') + (FAST ? '&fast' : ''); }
 
 function renderLobby() {
   if (!G || G.phase !== 'lobby') return;
@@ -737,8 +754,9 @@ function renderLobby() {
     L.innerHTML = `
       <div class="lob-left">
         <div class="biglogo"><span>⭐</span> MONC'S<br>SHOW</div>
-        <div class="qrbox"><div id="qr"></div></div>
-        <div class="joinhint">Aponte a câmera do celular para o QR code<br>ou entre com o código</div>
+        ${G.online ? `<div class="invite"><div class="inv-t">💻 Convide os amigos</div><div class="inv-s">Mande este link. Cada um abre no próprio computador:</div><div class="inv-link" id="invlink"></div><button id="copylink" class="inv-btn">📋 Copiar link</button></div>
+        <div class="joinhint">ou entrem com o código da sala</div>` : `<div class="qrbox"><div id="qr"></div></div>
+        <div class="joinhint">Aponte a câmera do celular para o QR code<br>ou entre com o código</div>`}
         <div class="roomcode">${G.room}</div>
         <div class="joinurl" id="joinurl"></div>
         <div id="lconn" class="lconn">🟠 Conectando…</div>
@@ -758,7 +776,10 @@ function renderLobby() {
       </div>`;
     const url = joinURL();
     $('#joinurl').textContent = url.replace(/^https?:\/\//, '');
-    try { new QRCode($('#qr'), { text: url, width: 330, height: 330, colorDark: '#0f172a', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); }
+    if (G.online) {
+      $('#invlink').textContent = url;
+      $('#copylink').onclick = () => { try { navigator.clipboard.writeText(url); $('#copylink').textContent = '✅ Link copiado!'; setTimeout(() => { const b = $('#copylink'); if (b) b.textContent = '📋 Copiar link'; }, 2000); } catch (e) { } };
+    } else try { new QRCode($('#qr'), { text: url, width: 330, height: 330, colorDark: '#0f172a', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); }
     catch (e) { $('#qr').innerHTML = `<div style="padding:30px;color:#0f172a;font-size:22px;width:270px">QR indisponível.<br>Use o código abaixo.</div>`; }
     $('#tminus').onclick = () => { G.maxTurns = Math.max(10, G.maxTurns - 1); renderLobby(); };
     $('#tplus').onclick = () => { G.maxTurns = Math.min(20, G.maxTurns + 1); renderLobby(); };
@@ -804,7 +825,7 @@ async function startGame() {
   G.turn = 1; G.pIdx = 0; G.traps = {}; G.bank = 5;
   placeStar();
   stageMode('board'); renderSide(); scheduleSync();
-  waitAll('🎬 O show vai começar!', 'Olhe para a TV');
+  waitAll('🎬 O show vai começar!', LOOK());
   SFX.fanfare();
   overlay(`<div class="intro"><div class="introT">QUE COMECE O SHOW!</div>
     <div class="introOrder">${G.order.map((id, i) => { const p = P(id); return `<div class="io" style="--pc:${p.color};animation-delay:${i * 0.15}s"><b>${i + 1}º</b><span class="lpav" style="background:${p.color}">${p.emoji}</span>${esc(p.name)}</div>`; }).join('')}</div>
@@ -873,7 +894,7 @@ const usableItems = p => [...new Set(p.items)].filter(k => !ITEMS[k].passive && 
 
 async function playerTurn(p) {
   G.cur = p.id; stageMode('board'); renderSide();
-  waitAll(`${p.emoji} Vez de ${p.name}`, 'Acompanhe na TV', p);
+  waitAll(`${p.emoji} Vez de ${p.name}`, G.online ? 'Acompanhe no tabuleiro' : 'Acompanhe na TV', p);
   say(pick([`Vez de ${p.name}! Capricha nesse dado!`, `${p.name}, o tabuleiro é todo seu!`, `Bora, ${p.name}! Mostra quem manda!`, `${p.name}, sua vez! Sem pressão... mas todo mundo tá olhando.`]));
   let used = false, dice = 1, fixed = null;
   diceIdle(p, 1);
@@ -1128,13 +1149,13 @@ function spinWheel(title, labels, idx, who) {
       <text transform="rotate(${am}) translate(0,${-R + 28}) rotate(90)" class="wtext" text-anchor="start" dy="7">${esc(l)}</text>`;
   }).join('');
   overlay(`<div class="wheelbox"><div class="wtitle">${title}</div>${who ? `<div class="wwho">${who}</div>` : ''}
-    <div class="wheelwrap"><svg viewBox="-270 -270 540 540" class="wheel"><g id="wheelG">${slices}</g><circle r="38" fill="#0f172a" stroke="#fde047" stroke-width="6"/><text class="wcenter" text-anchor="middle" dy="10">?</text></svg>
+    <div class="wheelwrap"><svg viewBox="-270 -270 540 540" class="wheel"><g id="wheelG" data-keep="style">${slices}</g><circle r="38" fill="#0f172a" stroke="#fde047" stroke-width="6"/><text class="wcenter" text-anchor="middle" dy="10">?</text></svg>
     <div class="wpointer">▼</div></div><div id="wres" class="wres"></div></div>`, 'center');
   const g = $('#wheelG');
   const final = 360 * 6 + (360 - (idx * seg + seg / 2)) + (Math.random() - 0.5) * seg * 0.5;
   g.style.transition = `transform ${T(3600)}ms cubic-bezier(.12,.75,.12,1)`;
   let ticks = 0; const ti = setInterval(() => { if (ticks++ < 25) SFX.tick(); else clearInterval(ti); }, T(120));
-  requestAnimationFrame(() => requestAnimationFrame(() => { g.style.transform = `rotate(${final}deg)`; }));
+  requestAnimationFrame(() => requestAnimationFrame(() => { g.style.transform = `rotate(${final}deg)`; mFx('wheel', [final, T(3600)]); }));
   return sleep(T(3800)).then(async () => {
     clearInterval(ti); SFX.pop();
     const r = $('#wres'); if (r) r.textContent = labels[idx];
@@ -1376,7 +1397,7 @@ async function duelQuestion(a, b, q, n) {
   const parts = [a, b], wrong = new Set();
   let win = null;
   renderQuestionTV(q, { dyn: '⚔️ Duelo', n: n + 1, tot: 3, phase: 'read', parts, duel: true });
-  parts.forEach(p => setUI(p, { screen: 'wait', msg: '👀 Leia a pergunta na TV', sub: q.q }));
+  parts.forEach(p => setUI(p, { screen: 'wait', msg: '👀 Leia a pergunta ' + SCR(), sub: q.q }));
   await say(q.q, { wait: true }); await sleep(T(300));
   const lim = LIMIT[q.lv];
   renderQuestionTV(q, { dyn: '⚔️ Duelo', n: n + 1, tot: 3, phase: 'ask', parts, lim, duel: true });
@@ -1394,7 +1415,7 @@ async function duelQuestion(a, b, q, n) {
 
 async function soloQuestion(p, q, label) {
   renderQuestionTV(q, { dyn: label, n: 1, tot: 1, phase: 'read', parts: [p] });
-  setUI(p, { screen: 'wait', msg: '👀 Leia a pergunta na TV', sub: q.q });
+  setUI(p, { screen: 'wait', msg: '👀 Leia a pergunta ' + SCR(), sub: q.q });
   await say(q.q, { wait: true });
   const lim = LIMIT[q.lv];
   renderQuestionTV(q, { dyn: label, n: 1, tot: 1, phase: 'ask', parts: [p], lim });
@@ -1475,7 +1496,7 @@ function renderQuestionTV(q, s) {
 
 async function runChoiceQuestion(q, parts, n, tot, dynLabel, withFx) {
   renderQuestionTV(q, { dyn: dynLabel, n, tot, phase: 'read', parts });
-  G.players.forEach(p => setUI(p, parts.includes(p) ? { screen: 'wait', msg: '👀 Leia a pergunta na TV', sub: q.q } : { screen: 'wait', msg: '💀 Você foi eliminado', sub: 'Torça (ou seque) pelos outros!' }));
+  G.players.forEach(p => setUI(p, parts.includes(p) ? { screen: 'wait', msg: '👀 Leia a pergunta ' + SCR(), sub: q.q } : { screen: 'wait', msg: '💀 Você foi eliminado', sub: 'Torça (ou seque) pelos outros!' }));
   await say(q.q, { wait: true });
   await sleep(T(250));
   const lim = LIMIT[q.lv];
@@ -1516,7 +1537,7 @@ async function quizRound() {
   const dyn = nextDyn(); G.lastDyn = dyn;
   const D = DYNS[dyn], parts = G.players.slice();
   const sc = {}; parts.forEach(p => sc[p.id] = { pts: 0, time: 0, out: null });
-  waitAll('🎤 Hora do quiz!', 'Olhe para a TV');
+  waitAll('🎤 Hora do quiz!', LOOK());
   SFX.fanfare();
   overlay(`<div class="dynintro"><div class="di-top">🎤 HORA DO QUIZ!</div><div class="di-e">${D.e}</div><div class="di-n">${D.n}</div><div class="di-d">${D.d}</div>
     <div class="di-r">Prêmios: 1º lugar ${REWARDS[0]} 🪙 + item à escolha · último lugar ganha um item surpresa</div></div>`, 'center');
@@ -1573,7 +1594,7 @@ async function runNumberQuestion(nq, parts, n, tot, sc) {
   const dynLabel = '🔢 Chute Numérico';
   const head = `<div class="qhead"><span class="qdyn">${dynLabel}</span><span class="qnum">Pergunta ${n} de ${tot}</span></div>`;
   overlay(`<div class="quiz read">${head}<div class="qtext">${esc(nq.q)}</div><div class="qtimer"></div><div class="numhint">Digite seu chute no celular!</div><div id="answered">${parts.map(p => `<span data-p="${p.id}" class="ans" style="--pc:${p.color}">${p.emoji}</span>`).join('')}</div></div>`, 'quizpanel');
-  parts.forEach(p => setUI(p, { screen: 'wait', msg: '👀 Leia a pergunta na TV', sub: nq.q }));
+  parts.forEach(p => setUI(p, { screen: 'wait', msg: '👀 Leia a pergunta ' + SCR(), sub: nq.q }));
   await say(nq.q, { wait: true });
   const lim = 25000;
   $('.quiz').classList.replace('read', 'ask');
@@ -1634,7 +1655,7 @@ async function roundResults(dyn, sc, parts) {
 /* ---------- final ---------- */
 async function finale() {
   G.cur = null; stageMode('quiz'); renderSide();
-  waitAll('🏁 Fim de jogo!', 'Olhe para a TV');
+  waitAll('🏁 Fim de jogo!', LOOK());
   SFX.fanfare();
   overlay(`<div class="dynintro"><div class="di-top">🏁 FIM DE JOGO!</div><div class="di-e">⭐</div><div class="di-n">Estrelas bônus</div><div class="di-d">Antes do resultado final, três estrelas bônus podem mudar tudo!</div></div>`, 'center');
   await say('Acabou! Mas calma, antes do resultado ainda temos três estrelas bônus que podem mudar tudo!', { wait: true });
@@ -1685,22 +1706,26 @@ async function finale() {
    ========================================================================= */
 function makeRoom() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; return Array.from({ length: 4 }, () => A[rnd(A.length)]).join(''); }
 
-function tvMain(resume) {
+function tvMain(resume, opts = {}) {
   if (resume) loadMap(resume.map);
-  buildTV(); Voice.init();
+  buildTV(opts.container); Voice.init();
   if (resume) {
     G = resume; Object.keys(pending).forEach(k => delete pending[k]);
     UIC = Math.max(UIC, ...G.players.map(p => (p.ui && p.ui.id) || 0)) + 1000;
     G.players.forEach(p => { p.online = false; p.lastSeen = Date.now(); waitUI(p, '🔄 Retomando a partida…'); });
-  } else G = newGame(makeRoom());
+  } else { G = newGame(makeRoom()); if (opts.online) G.online = true; }
   $('#roomtag').textContent = 'Sala ' + G.room;
   net = createTransport(G.room, onTVMsg, setConn);
+  if (G.online) {   // o anfitrião também joga: as telas dele chegam direto, sem passar pela rede
+    const raw = net.send;
+    net.send = m => { raw(m); if (m.t === 's') setTimeout(() => onPhoneMsg(m), 0); };
+  }
   setInterval(sendSync, 2500);
   document.addEventListener('click', () => SFX.init(), { once: true });
   if (resume) {
     stageMode('board'); renderSide();
     const go = () => { SFX.init(); say("E estamos de volta com o Monc's Show!"); gameLoop(); };
-    overlay(`<div class="dynintro"><div class="di-top">🔄 Partida recuperada</div><div class="di-d">Peça para todos abrirem o jogo de novo no celular (mesmo link).<br>Turno ${G.turn} de ${G.maxTurns}.</div><button id="resumego" class="startbtn small">▶ Continuar</button></div>`, 'center');
+    overlay(`<div class="dynintro"><div class="di-top">🔄 Partida recuperada</div><div class="di-d">${G.online ? 'Peça para todos abrirem o link de novo no computador.' : 'Peça para todos abrirem o jogo de novo no celular (mesmo link).'}<br>Turno ${G.turn} de ${G.maxTurns}.</div><button id="resumego" class="startbtn small">▶ Continuar</button></div>`, 'center');
     $('#resumego').onclick = () => { closeOverlay(); go(); };
   } else {
     stageMode('lobby'); renderLobby();
@@ -1714,16 +1739,23 @@ const PH = { room: null, pid: null, name: '', emoji: '', joined: false, cur: { i
 
 function phoneMain(room) {
   document.body.className = 'phone';
-  PH.room = room.toUpperCase();
+  document.body.innerHTML = `<div id="pbar"></div><div id="pmain"></div>`;
+  phoneCore(room);
+}
+
+// opts.local: anfitrião do online (fala direto com o jogo) · opts.online: painel do modo online
+function phoneCore(room, opts = {}) {
+  PH.room = room.toUpperCase(); PH.online = !!(opts.online || opts.local); PH.isHost = !!opts.local;
   const ls = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   PH.pid = ls('qp_pid_' + LSX + PH.room) || uid();
   try { localStorage.setItem('qp_pid_' + LSX + PH.room, PH.pid); } catch (e) { }
   PH.name = ls('qp_name' + LSX) || '';
   PH.emoji = ls('qp_emoji' + LSX) || pick(AVATARS);
-  document.body.innerHTML = `<div id="pbar"></div><div id="pmain"></div>`;
-  PH.net = createTransport(PH.room, onPhoneMsg, st => { PH.conn = st === 'ok'; renderBar(); if (PH.conn) PH.net.send({ t: 'hello', pid: PH.pid }); });
-  const wasJoined = ls('qp_joined_' + LSX + PH.room) === '1';
-  if (wasJoined && PH.name) { PH.joined = true; sendJoin(); showMsg('🔄 Reconectando…', 'Procurando a TV da sala ' + PH.room); }
+  if (opts.local) { PH.net = { send: m => setTimeout(() => onTVMsg(m), 0) }; PH.conn = true; }
+  else PH.net = createTransport(PH.room, m => { if (m && m.t === 's') onPhoneMsg(m); else if (opts.onMsg) opts.onMsg(m); },
+    st => { PH.conn = st === 'ok'; renderBar(); if (PH.conn) { PH.net.send({ t: 'hello', pid: PH.pid }); if (opts.onConnect) opts.onConnect(); } });
+  const wasJoined = opts.local || ls('qp_joined_' + LSX + PH.room) === '1';
+  if (wasJoined && PH.name) { PH.joined = true; sendJoin(); showMsg(opts.local ? '🎬 Abrindo a sala…' : '🔄 Conectando…', opts.local ? '' : 'Procurando ' + (PH.online ? 'o anfitrião' : 'a TV') + ' da sala ' + PH.room); }
   else renderJoin();
   setInterval(() => {
     if (PH.pendingAct && PH.pendingAct.uid === PH.cur.id) PH.net.send(PH.pendingAct.msg);
@@ -1757,7 +1789,7 @@ function renderJoin() {
     PH.name = n.slice(0, 14);
     try { localStorage.setItem('qp_name' + LSX, PH.name); localStorage.setItem('qp_emoji' + LSX, PH.emoji); localStorage.setItem('qp_joined_' + LSX + PH.room, '1'); } catch (e) { }
     PH.joined = true; keepAwake(); sendJoin();
-    showMsg('⏳ Entrando…', PH.conn ? 'Falando com a TV' : 'Conectando à sala…');
+    showMsg('⏳ Entrando…', PH.conn ? (PH.online ? 'Falando com o anfitrião' : 'Falando com a TV') : 'Conectando à sala…');
   };
 }
 
@@ -1774,7 +1806,7 @@ function onPhoneMsg(m) {
   if (!mine) {
     if (rj) {
       PH.joined = false; try { localStorage.removeItem('qp_joined_' + LSX + PH.room); } catch (e) { }
-      const msgs = { full: 'A sala está cheia (8 jogadores).', started: 'A partida já começou sem você.', kicked: 'Você foi removido da sala.' };
+      const msgs = { full: 'A sala está cheia (8 jogadores).', started: PH.online ? 'A partida já começou. Dá para assistir pelo tabuleiro ao lado.' : 'A partida já começou sem você.', kicked: 'Você foi removido da sala.' };
       showMsg('🚫 Não deu para entrar', msgs[rj] || '', true);
     }
     return;
@@ -1804,7 +1836,7 @@ function showMsg(msg, sub, err) {
 }
 
 function act(a) {
-  const msg = { t: 'act', pid: PH.pid, uid: PH.cur.id, a };
+  const msg = { t: 'act', pid: PH.pid, uid: PH.cur.id, a, el: Date.now() - (PH.shownAt || Date.now()) };
   PH.pendingAct = { uid: PH.cur.id, msg };
   PH.net.send(msg);
   try { navigator.vibrate && navigator.vibrate(30); } catch (e) { }
@@ -1821,11 +1853,12 @@ function startTimerBar(total) {
 
 function renderPhoneUI(ui) {
   clearInterval(PH.tmr);
+  PH.shownAt = Date.now();
   const main = $('#pmain');
   const lock = () => main.querySelectorAll('button').forEach(b => b.disabled = true);
   switch (ui.screen) {
     case 'lobby':
-      main.innerHTML = `<div class="pwait"><div class="pw-big" style="background:${PH.me.color}">${PH.me.emoji}</div><div class="pw-msg">Você está no show!</div><div class="pw-sub">Aguarde a TV começar a partida.<br>Deixe o volume da TV alto 😄</div></div>`;
+      main.innerHTML = `<div class="pwait"><div class="pw-big" style="background:${PH.me.color}">${PH.me.emoji}</div><div class="pw-msg">Você está no show!</div><div class="pw-sub">${PH.isHost ? 'Você é o anfitrião!<br>Escolha o mapa e os turnos no tabuleiro e clique em <b>Começar o show</b>.' : PH.online ? 'Aguarde o anfitrião começar a partida.' : 'Aguarde a TV começar a partida.<br>Deixe o volume da TV alto 😄'}</div></div>`;
       break;
     case 'wait':
       main.innerHTML = `<div class="pwait"><div class="pw-msg">${esc(ui.msg || '')}</div>${ui.sub ? `<div class="pw-sub">${esc(ui.sub)}</div>` : ''}</div>`;
@@ -1921,7 +1954,7 @@ function renderPhoneUI(ui) {
 function homeMain() {
   document.body.className = 'phone home';
   let saved = null;
-  try { const s = JSON.parse(localStorage.getItem('qp_tv') || 'null'); if (s && Date.now() - s.ts < 6 * 3600e3 && s.G && s.G.phase !== 'lobby') saved = s.G; } catch (e) { }
+  try { const s = JSON.parse(localStorage.getItem('qp_tv') || 'null'); if (s && Date.now() - s.ts < 6 * 3600e3 && s.G && s.G.phase !== 'lobby' && !s.G.online) saved = s.G; } catch (e) { }
   document.body.innerHTML = `<div class="pjoin homebox">
     <div class="plogo">⭐ MONC'S<br>SHOW</div>
     <div class="psub">Jogo de tabuleiro + quiz para até 8 pessoas.<br>A TV mostra o show, cada um joga no celular.</div>
@@ -1931,14 +1964,26 @@ function homeMain() {
     <label class="plabel">Código da sala</label>
     <input id="code" maxlength="4" placeholder="ABCD" autocomplete="off" style="text-transform:uppercase;text-align:center;letter-spacing:.3em;font-size:28px">
     <button class="pbig alt" id="joinbtn">📱 Entrar pelo celular</button>
+    <div class="or">— ou —</div>
+    <button class="pbig online" id="onlinebtn">💻 Jogar online (cada um no seu computador)</button>
   </div>`;
   const keep = (LOCAL ? '&local' : '') + (FAST ? '&fast' : '');
   $('#tvbtn').onclick = () => { location.search = '?tv' + keep; };
   if (saved) $('#resbtn').onclick = () => { location.search = '?tv&resume' + keep; };
   $('#joinbtn').onclick = () => { const c = $('#code').value.trim().toUpperCase(); if (c.length === 4) location.search = '?sala=' + c + keep; };
+  $('#onlinebtn').onclick = () => { location.search = '?online' + keep; };
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  if (ONLINE) {
+    if (PARAMS.has('host')) {
+      let resume = null;
+      if (PARAMS.has('resume')) { try { const s = JSON.parse(localStorage.getItem('qp_tv') || 'null'); if (s && s.G && s.G.online) resume = s.G; } catch (e) { } }
+      onlineHostMain(resume);
+    } else if (PARAMS.has('sala')) onlineClientMain(PARAMS.get('sala'));
+    else onlineHomeMain();
+    return;
+  }
   if (PARAMS.has('sala')) phoneMain(PARAMS.get('sala'));
   else if (PARAMS.has('tv')) {
     let resume = null;

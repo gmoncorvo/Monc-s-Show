@@ -231,7 +231,7 @@ body.tv{overflow:hidden;background:#05071a}
 .bow1 .msav{width:80px;height:80px;font-size:46px}
 .bo-v{width:100%;font-size:30px;color:#a5b4fc}
 
-.final{width:1300px}
+.panel .final{width:1300px}
 .fi-t{font-family:var(--fd);font-weight:700;font-size:70px;color:var(--gold)}
 .podium{display:flex;justify-content:center;align-items:flex-end;gap:30px;margin:30px 0 20px;height:520px}
 .pod{display:flex;flex-direction:column;align-items:center;width:320px;transition:all .6s cubic-bezier(.2,1.5,.4,1)}
@@ -441,3 +441,35 @@ button:disabled{opacity:.5}
 .lob-cfg .cfg-dur{font-size:18px}
 .startbtn{margin-top:16px;height:88px}
 .lob-tip{margin-top:8px}
+
+/* ===== modo online: tabuleiro + painel de controles ===== */
+body.online{display:grid;grid-template-columns:minmax(0,1fr) 400px;height:100vh;overflow:hidden;background:#05071a;user-select:none;-webkit-user-select:none}
+#stagebox{position:relative;overflow:hidden;height:100vh;min-width:0}
+#opanel{height:100vh;overflow-y:auto;display:flex;flex-direction:column;border-left:2px solid rgba(255,255,255,.1);
+  background:radial-gradient(500px 300px at 0% 0%,rgba(168,85,247,.3),transparent 60%),radial-gradient(500px 300px at 100% 100%,rgba(59,130,246,.25),transparent 60%),#0b1026}
+.ohead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
+.ologo{font-family:var(--fd);font-weight:700;font-size:20px;background:linear-gradient(90deg,#fde047,#fb923c,#f472b6);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ologo small{font-size:13px;-webkit-text-fill-color:#a5b4fc;margin-left:4px}
+.ohead .mini{width:40px;height:40px;font-size:20px;border-radius:12px;margin-left:6px}
+body.online #pbar{position:sticky;top:0}
+body.online #pmain{width:100%;max-width:none;padding:14px}
+body.online .pwait{min-height:45vh}
+body.online .pbig.roll{min-height:140px}
+body.online .pjoin input{user-select:text;-webkit-user-select:text}
+body.online.client #stage{pointer-events:none}
+body.online.client #stage .startbtn,body.online.client #stage .lob-tip,body.online.client #stage .inv-btn,body.online.client #stage #resumego{visibility:hidden}
+body.online.client #stage .tb-right .mini{display:none}
+#soundgate{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:rgba(5,7,26,.82);backdrop-filter:blur(6px);cursor:pointer}
+.sg-box{text-align:center;padding:40px 50px;border-radius:28px;background:rgba(15,23,42,.9);border:3px solid #fde047;max-width:520px;animation:popin .4s}
+.sg-e{font-size:80px}.sg-t{font-family:var(--fd);font-weight:700;font-size:34px;color:#fde047}.sg-s{color:#c7d2fe;margin-top:8px;font-size:17px}
+/* convite no lobby online */
+.invite{margin-top:30px;width:600px;padding:28px;border-radius:28px;background:rgba(255,255,255,.07);border:3px solid rgba(253,224,71,.5);text-align:center}
+.inv-t{font-family:var(--fd);font-weight:700;font-size:40px;color:#fde047}
+.inv-s{font-size:22px;color:#c7d2fe;margin:8px 0 14px}
+.inv-link{font-size:22px;padding:14px;border-radius:14px;background:#0f172a;color:#e0e7ff;word-break:break-all;user-select:all;-webkit-user-select:all}
+.inv-btn{margin-top:16px;height:64px;padding:0 34px;border:none;border-radius:18px;font-family:var(--fd);font-weight:700;font-size:26px;color:#1c1917;background:linear-gradient(180deg,#fde047,#f59e0b)}
+/* início */
+.pbig.online{background:linear-gradient(180deg,#22d3ee,#0891b2);color:#04222b}
+.onlinehome .psub{font-size:15px;line-height:1.45}
+.backlink{text-align:center;color:#a5b4fc;margin-top:14px;font-size:15px}
+body.online.client #stage .conn{display:none}

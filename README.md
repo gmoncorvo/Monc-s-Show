@@ -11,6 +11,7 @@ Jogo de tabuleiro + quiz para até 8 jogadores. A TV (notebook) mostra o show e 
 - `questions_more.js`: expansão do banco (cerca de 770 perguntas no total e 76 de chute numérico).
 - `template.html`: esqueleto HTML que recebe o CSS e o JS no build.
 - `build.py`: junta tudo em `index.html` e insere URL e chave do Supabase.
+- `online.js`: modo online (espelhamento da tela do anfitrião e telas de entrada).
 - `test.py`: simula uma partida completa com 3 celulares (Playwright).
 
 ## Build
@@ -22,6 +23,15 @@ python build.py https://SEU-PROJETO.supabase.co SUA_ANON_KEY
 ## Mapas
 
 - 🌳 **Floresta**, ❄️ **Picos Gelados** e 🌋 **Ilha Vulcânica**, escolhidos no lobby. Ficam no objeto `MAPS` do `game.js`: junções (bifurcações), trechos com os tipos de casa e o tema visual.
+
+## Modo online (cada um no seu computador)
+
+- Tela inicial → **💻 Jogar online**. Um jogador cria a sala (é o **anfitrião**) e manda o link para os outros.
+- `index.html?online` abre a entrada do modo online, `?online&host` abre o anfitrião e `?online&sala=ABCD` abre um convidado.
+- O anfitrião roda o jogo (como a TV) e também joga. As partes da tela que mudam vão para os convidados como HTML, e cada computador aplica só a diferença. Sons, voz e animações vão como eventos, agrupados na mesma mensagem.
+- Cada computador mostra o tabuleiro à esquerda e o painel de controles (o mesmo do celular) à direita.
+- O tempo de resposta do quiz é medido no computador de cada jogador, para não penalizar quem tem internet mais lenta.
+- O código fica em `online.js`. O modo TV + celular continua igual.
 
 ## Como funciona
 

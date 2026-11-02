@@ -66,34 +66,85 @@ const SPACE = {
   K: { n: 'Banco',    c: '#ca8a04', icon: '🏦' },
   V: { n: 'Vilão',    c: '#6d28d9', icon: '😈' },
   T: { n: 'Ladrão de Estrela', c: '#111827', icon: '🦹' },
+  I: { n: 'Gelo escorregadio', c: '#bae6fd', icon: '🧊', dark: true },
+  C: { n: 'Teleférico', c: '#334155', icon: '🚡' },
+  A: { n: 'Avalanche', c: '#f1f5f9', icon: '🏔️', dark: true },
+  F: { n: 'Lava', c: '#f97316', icon: '🔥' },
+  Y: { n: 'Gêiser', c: '#0e7490', icon: '💨' },
+  Z: { n: 'Erupção', c: '#7f1d1d', icon: '🌋' },
 };
 
 /* =========================================================================
-   TABULEIRO — 54 casas, 3 bifurcações e um retorno pelo centro
+   MAPAS — cada mapa tem junções (bifurcações), trechos e um tema visual
+   Tipos de casa: B azul, R vermelha, E roleta, D duelo, G presente, L loja,
+   K banco, V vilão, T ladrão · Neve: I gelo, C teleférico, A avalanche
+   · Vulcão: F lava, Y gêiser, Z erupção
    ========================================================================= */
-const JUNCTIONS = {
-  J0: [100, 680, 'S'], J1: [520, 700, 'B'], J2: [960, 660, 'B'], J3: [1100, 380, 'B'],
-  J4: [880, 120, 'B'], J5: [500, 110, 'B'], J6: [140, 300, 'B'],
+const MAPS = {
+  forest: {
+    name: 'Floresta', emoji: '🌳', desc: 'O clássico: orla, serra e um retorno pelo centro.',
+    theme: { fill: '#14532d', stroke: '#4ade80', glow: '#2dd4bf', road: '#fef3c7', road2: '#d6b98c', arrow: '#78350f' },
+    logo: [735, 420], dice: [[300, 470], [770, 430]],
+    deco: [['🌴', 640, 470], ['🌴', 260, 470], ['🌊', 760, 790], ['⛰️', 1010, 220], ['🌲', 300, 300], ['🏝️', 820, 470], ['🌵', 990, 520], ['🌻', 200, 600], ['🍄', 380, 600], ['🌲', 1180, 760], ['🌲', 30, 160]],
+    junctions: { J0: [100, 680, 'S'], J1: [520, 700, 'B'], J2: [960, 660, 'B'], J3: [1100, 380, 'B'], J4: [880, 120, 'B'], J5: [500, 110, 'B'], J6: [140, 300, 'B'] },
+    segs: [
+      { f: 'J0', t: 'J1', ty: 'BEBRB', pts: [[100, 680], [200, 745], [310, 690], [420, 745], [520, 700]] },
+      { f: 'J1', t: 'J2', ty: 'BGBDB', label: '🌊 Pela orla (mais longo, mais seguro)', pts: [[520, 700], [600, 765], [720, 745], [840, 770], [960, 660]] },
+      { f: 'J1', t: 'J2', ty: 'RLRB', label: '🏪 Atalho do comércio (loja, mas arriscado)', pts: [[520, 700], [640, 640], [760, 600], [870, 620], [960, 660]] },
+      { f: 'J2', t: 'J3', ty: 'BDEBR', pts: [[960, 660], [1080, 720], [1150, 600], [1080, 490], [1100, 380]] },
+      { f: 'J3', t: 'J4', ty: 'BGBEB', label: '⛰️ Volta da serra (mais longo)', pts: [[1100, 380], [1160, 270], [1130, 150], [1010, 70], [880, 120]] },
+      { f: 'J3', t: 'J4', ty: 'VRE', label: '🌑 Atalho sombrio (curto, mas tem vilão!)', pts: [[1100, 380], [980, 350], [900, 260], [880, 120]] },
+      { f: 'J4', t: 'J5', ty: 'BRKBD', pts: [[880, 120], [790, 55], [690, 120], [590, 55], [500, 110]] },
+      { f: 'J5', t: 'J6', ty: 'ETLBR', label: '⬅️ Seguir pela trilha', pts: [[500, 110], [400, 175], [290, 105], [190, 170], [140, 300]] },
+      { f: 'J6', t: 'J0', ty: 'BDGB', pts: [[140, 300], [60, 390], [95, 500], [55, 600], [100, 680]] },
+      { f: 'J5', t: 'J1', ty: 'REVBGB', label: '↩️ Retorno pelo centro', pts: [[500, 110], [470, 230], [570, 330], [450, 430], [560, 560], [520, 700]] },
+    ],
+  },
+  snow: {
+    name: 'Picos Gelados', emoji: '❄️', desc: 'Gelo que escorrega, teleférico e avalanches.',
+    theme: { fill: '#163454', stroke: '#bae6fd', glow: '#7dd3fc', road: '#f0f9ff', road2: '#93c5fd', arrow: '#1e3a8a' },
+    logo: [600, 520], dice: [[430, 520], [760, 520]],
+    deco: [['⛄', 520, 610], ['🌲', 360, 300], ['🌲', 820, 300], ['🏔️', 600, 220], ['❄️', 200, 600], ['❄️', 1020, 470], ['🐧', 700, 640], ['🌨️', 1170, 60], ['🌲', 30, 90], ['🦌', 330, 450], ['🏔️', 1040, 760]],
+    junctions: { J0: [600, 740, 'S'], J1: [260, 700, 'B'], J2: [110, 320, 'B'], J3: [420, 95, 'B'], J4: [800, 95, 'B'], J5: [1090, 330, 'B'], J6: [960, 700, 'B'] },
+    segs: [
+      { f: 'J0', t: 'J1', ty: 'BIBRB', pts: [[600, 740], [510, 772], [420, 720], [330, 765], [260, 700]] },
+      { f: 'J1', t: 'J2', ty: 'BGBDAB', label: '🏔️ Pela encosta (mais longo)', pts: [[260, 700], [150, 745], [60, 620], [80, 480], [40, 400], [110, 320]] },
+      { f: 'J1', t: 'J2', ty: 'IRLI', label: '🧊 Lago congelado (escorrega!)', pts: [[260, 700], [300, 590], [230, 500], [250, 410], [110, 320]] },
+      { f: 'J2', t: 'J3', ty: 'BECBR', pts: [[110, 320], [130, 210], [220, 140], [320, 170], [420, 95]] },
+      { f: 'J3', t: 'J4', ty: 'BRBGB', label: '⛰️ Pela crista (mais curto)', pts: [[420, 95], [500, 45], [600, 95], [700, 45], [800, 95]] },
+      { f: 'J3', t: 'J4', ty: 'BTEVB', label: '🌨️ Pelo vale (ladrão à espreita)', pts: [[420, 95], [470, 220], [600, 320], [730, 220], [800, 95]] },
+      { f: 'J4', t: 'J5', ty: 'BRKDB', pts: [[800, 95], [900, 55], [1000, 110], [1100, 160], [1090, 330]] },
+      { f: 'J5', t: 'J6', ty: 'BGBAB', label: '❄️ Trilha externa', pts: [[1090, 330], [1160, 430], [1130, 540], [1110, 650], [960, 700]] },
+      { f: 'J5', t: 'J6', ty: 'ICRB', label: '🚡 Pela estação do teleférico', pts: [[1090, 330], [960, 380], [900, 480], [930, 590], [960, 700]] },
+      { f: 'J6', t: 'J0', ty: 'BLIEB', pts: [[960, 700], [880, 765], [780, 720], [690, 770], [600, 740]] },
+    ],
+  },
+  volcano: {
+    name: 'Ilha Vulcânica', emoji: '🌋', desc: 'Lava, gêiseres e um atalho pela cratera.',
+    theme: { fill: '#2a0f0a', stroke: '#f97316', glow: '#ef4444', road: '#57534e', road2: '#fb923c', arrow: '#fdba74' },
+    logo: [905, 575], dice: [[905, 540], [370, 430]],
+    deco: [['🌋', 820, 460], ['🔥', 700, 420], ['🪨', 380, 300], ['💀', 1010, 520], ['🌴', 300, 560], ['🦖', 660, 620], ['🔥', 470, 470], ['🪨', 1180, 760], ['🌴', 40, 760], ['🦂', 200, 300]],
+    junctions: { J0: [140, 720, 'S'], J1: [480, 690, 'B'], J2: [900, 720, 'B'], J3: [1110, 420, 'B'], J4: [850, 110, 'B'], J5: [360, 90, 'B'], J6: [90, 380, 'B'] },
+    segs: [
+      { f: 'J0', t: 'J1', ty: 'BFBRB', pts: [[140, 720], [220, 772], [310, 720], [400, 772], [480, 690]] },
+      { f: 'J1', t: 'J2', ty: 'BGLDB', label: '🏖️ Praia de cinzas (mais longo)', pts: [[480, 690], [560, 770], [680, 740], [790, 780], [900, 720]] },
+      { f: 'J1', t: 'J4', ty: 'RZYFRE', label: '🌋 Pela cratera (atalho perigoso!)', pts: [[480, 690], [560, 580], [620, 470], [560, 360], [640, 250], [760, 180], [850, 110]] },
+      { f: 'J2', t: 'J3', ty: 'BEBYB', pts: [[900, 720], [1020, 765], [1150, 680], [1110, 560], [1110, 420]] },
+      { f: 'J3', t: 'J4', ty: 'BFBGB', label: '🔥 Borda do vulcão', pts: [[1110, 420], [1170, 320], [1120, 210], [1020, 140], [850, 110]] },
+      { f: 'J3', t: 'J4', ty: 'TVRB', label: '🦹 Caverna escura (ladrão e vilão)', pts: [[1110, 420], [1000, 380], [930, 290], [900, 200], [850, 110]] },
+      { f: 'J4', t: 'J5', ty: 'BRKBDB', pts: [[850, 110], [760, 50], [650, 100], [540, 50], [450, 110], [360, 90]] },
+      { f: 'J5', t: 'J6', ty: 'BEBLR', pts: [[360, 90], [260, 160], [170, 120], [70, 220], [90, 380]] },
+      { f: 'J6', t: 'J0', ty: 'BGYB', label: '🌊 Pela costa', pts: [[90, 380], [40, 480], [90, 580], [50, 660], [140, 720]] },
+      { f: 'J6', t: 'J0', ty: 'DFEZ', label: '⛏️ Pelas minas (arriscado)', pts: [[90, 380], [200, 430], [260, 540], [220, 640], [140, 720]] },
+    ],
+  },
 };
-// tipos: B azul, R vermelha, E roleta, D duelo, G presente, L loja, K banco, V vilão
-const SEGS = [
-  { f: 'J0', t: 'J1', ty: 'BEBRB', pts: [[100, 680], [200, 745], [310, 690], [420, 745], [520, 700]] },
-  { f: 'J1', t: 'J2', ty: 'BGBDB', label: '🌊 Pela orla (mais longo, mais seguro)', pts: [[520, 700], [600, 765], [720, 745], [840, 770], [960, 660]] },
-  { f: 'J1', t: 'J2', ty: 'RLRB', label: '🏪 Atalho do comércio (loja, mas arriscado)', pts: [[520, 700], [640, 640], [760, 600], [870, 620], [960, 660]] },
-  { f: 'J2', t: 'J3', ty: 'BDEBR', pts: [[960, 660], [1080, 720], [1150, 600], [1080, 490], [1100, 380]] },
-  { f: 'J3', t: 'J4', ty: 'BGBEB', label: '⛰️ Volta da serra (mais longo)', pts: [[1100, 380], [1160, 270], [1130, 150], [1010, 70], [880, 120]] },
-  { f: 'J3', t: 'J4', ty: 'VRE', label: '🌑 Atalho sombrio (curto, mas tem vilão!)', pts: [[1100, 380], [980, 350], [900, 260], [880, 120]] },
-  { f: 'J4', t: 'J5', ty: 'BRKBD', pts: [[880, 120], [790, 55], [690, 120], [590, 55], [500, 110]] },
-  { f: 'J5', t: 'J6', ty: 'ETLBR', label: '⬅️ Seguir pela trilha', pts: [[500, 110], [400, 175], [290, 105], [190, 170], [140, 300]] },
-  { f: 'J6', t: 'J0', ty: 'BDGB', pts: [[140, 300], [60, 390], [95, 500], [55, 600], [100, 680]] },
-  { f: 'J5', t: 'J1', ty: 'REVBGB', label: '↩️ Retorno pelo centro', pts: [[500, 110], [470, 230], [570, 330], [450, 430], [560, 560], [520, 700]] },
-];
 
-function buildBoard() {
+function buildBoard(map) {
   const nodes = [], jIdx = {}, branch = {}, paths = [], seg = {};
   const typeOf = ch => ch === 'L' ? 'S2' : ch;
-  for (const [k, [x, y, t]] of Object.entries(JUNCTIONS)) { jIdx[k] = nodes.length; nodes.push({ id: nodes.length, x, y, type: t, next: [], j: true }); }
-  for (const s of SEGS) {
+  for (const [k, [x, y, t]] of Object.entries(map.junctions)) { jIdx[k] = nodes.length; nodes.push({ id: nodes.length, x, y, type: t, next: [], prev: [], j: true }); }
+  for (const s of map.segs) {
     const pts = s.pts, lens = [0];
     for (let i = 1; i < pts.length; i++) lens.push(lens[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
     const total = lens[lens.length - 1], n = s.ty.length, ids = [];
@@ -102,18 +153,19 @@ function buildBoard() {
       let k = 1; while (lens[k] < d) k++;
       const r = (d - lens[k - 1]) / (lens[k] - lens[k - 1]);
       const x = pts[k - 1][0] + (pts[k][0] - pts[k - 1][0]) * r, y = pts[k - 1][1] + (pts[k][1] - pts[k - 1][1]) * r;
-      ids.push(nodes.length); nodes.push({ id: nodes.length, x: Math.round(x), y: Math.round(y), type: typeOf(s.ty[i - 1]), next: [] });
+      ids.push(nodes.length); nodes.push({ id: nodes.length, x: Math.round(x), y: Math.round(y), type: typeOf(s.ty[i - 1]), next: [], prev: [] });
     }
     const chain = [jIdx[s.f], ...ids, jIdx[s.t]];
-    for (let i = 0; i < chain.length - 1; i++) nodes[chain[i]].next.push(chain[i + 1]);
+    for (let i = 0; i < chain.length - 1; i++) { nodes[chain[i]].next.push(chain[i + 1]); nodes[chain[i + 1]].prev.push(chain[i]); }
     if (s.label) branch[jIdx[s.f] + '>' + ids[0]] = s.label;
     seg[jIdx[s.f] + '>' + ids[0]] = chain;
     paths.push(chain);
   }
-  return { nodes, branch, paths, seg, start: jIdx.J0 };
+  return { nodes, branch, paths, seg, start: jIdx.J0, map };
 }
-const BOARD = buildBoard();
-const NODES = BOARD.nodes;
+let BOARD = null, NODES = null, MAP = null;
+function loadMap(id) { MAP = MAPS[id] || MAPS.forest; BOARD = buildBoard(MAP); NODES = BOARD.nodes; }
+loadMap('forest');
 
 /* =========================================================================
    TRANSPORTE — Supabase Realtime (broadcast) ou BroadcastChannel local
@@ -222,7 +274,7 @@ function newGame(room) {
   return {
     room, phase: 'lobby', players: [], order: [], turn: 1, maxTurns: 10, pIdx: 0,
     star: null, bank: 5, traps: {}, cur: null, dynBag: [], lastDyn: null,
-    used: {}, usedNum: [], rej: {}, seed: uid(),
+    used: {}, usedNum: [], rej: {}, seed: uid(), map: 'forest',
   };
 }
 
@@ -442,7 +494,7 @@ function smoothPath(pts) {
 
 function buildBoardSVG() {
   const paths = BOARD.paths.map(ch => smoothPath(ch.map(i => [NODES[i].x, NODES[i].y])));
-  const deco = [['🌴', 640, 470], ['🌴', 260, 470], ['🌊', 760, 790], ['⛰️', 1010, 220], ['🌲', 300, 300], ['🏝️', 820, 470], ['🌵', 990, 520], ['🌻', 200, 600], ['🍄', 380, 600], ['🌲', 1180, 760], ['🌲', 30, 160]];
+  const deco = MAP.deco, th = MAP.theme, [lx, ly] = MAP.logo;
   const nodesSVG = NODES.map(n => {
     const sp = SPACE[n.type], r = n.j ? 22 : 19;
     let label = sp.icon;
@@ -454,19 +506,19 @@ function buildBoardSVG() {
       <circle r="${r + 4}" class="nshadow"/>
       <circle r="${r}" fill="${sp.c}" class="nbody"/>
       <circle r="${r - 5}" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2"/>
-      <text class="nlabel" font-size="${fs}" fill="${n.type === 'S' ? '#0f172a' : '#fff'}">${label}</text></g>`;
+      <text class="nlabel" font-size="${fs}" fill="${n.type === 'S' || sp.dark ? '#0f172a' : '#fff'}">${label}</text></g>`;
   }).join('');
   $('#boardWrap').innerHTML = `<svg id="board" viewBox="0 0 1200 800">
     <defs>
-      <radialGradient id="bgG" cx="50%" cy="45%" r="70%"><stop offset="0" stop-color="#2dd4bf" stop-opacity=".22"/><stop offset="1" stop-color="#0f172a" stop-opacity="0"/></radialGradient>
+      <radialGradient id="bgG" cx="50%" cy="45%" r="70%"><stop offset="0" stop-color="${th.glow}" stop-opacity=".22"/><stop offset="1" stop-color="#0f172a" stop-opacity="0"/></radialGradient>
       <filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
-    <rect x="4" y="4" width="1192" height="792" rx="40" fill="#14532d" stroke="#4ade80" stroke-opacity=".35" stroke-width="4"/>
+    <rect x="4" y="4" width="1192" height="792" rx="40" fill="${th.fill}" stroke="${th.stroke}" stroke-opacity=".4" stroke-width="4"/>
     <rect x="4" y="4" width="1192" height="792" rx="40" fill="url(#bgG)"/>
     ${deco.map(([e, x, y]) => `<text x="${x}" y="${y}" font-size="34" opacity=".55" text-anchor="middle">${e}</text>`).join('')}
-    <g class="centerlogo"><text x="735" y="400" text-anchor="middle" class="cl1">MONC'S</text><text x="735" y="452" text-anchor="middle" class="cl2">SHOW</text></g>
-    ${paths.map(d => `<path d="${d}" class="road"/>`).join('')}
-    ${paths.map(d => `<path d="${d}" class="road2"/>`).join('')}
+    <g class="centerlogo"><text x="${lx}" y="${ly - 20}" text-anchor="middle" class="cl1">MONC'S</text><text x="${lx}" y="${ly + 32}" text-anchor="middle" class="cl2">SHOW</text></g>
+    ${paths.map(d => `<path d="${d}" class="road" style="stroke:${th.road}"/>`).join('')}
+    ${paths.map(d => `<path d="${d}" class="road2" style="stroke:${th.road2}"/>`).join('')}
     <g id="brG"></g>
     <g id="arrows"></g>
     ${nodesSVG}
@@ -478,7 +530,7 @@ function buildBoardSVG() {
   NODES.forEach(n => n.next.forEach(nx => {
     const m = NODES[nx]; if (!n.j && !m.j && n.next.length === 1) return;
     const ang = Math.atan2(m.y - n.y, m.x - n.x) * 180 / Math.PI, mx = (n.x + m.x) / 2, my = (n.y + m.y) / 2;
-    ar.push(`<path d="M-7,-7 L5,0 L-7,7" transform="translate(${mx},${my}) rotate(${ang})" class="arrow"/>`);
+    ar.push(`<path d="M-7,-7 L5,0 L-7,7" transform="translate(${mx},${my}) rotate(${ang})" class="arrow" style="stroke:${MAP.theme.arrow}"/>`);
   }));
   $('#arrows').innerHTML = ar.join('');
 }
@@ -694,9 +746,11 @@ function renderLobby() {
       <div class="lob-right">
         <div class="lob-title">Jogadores <span id="pcount"></span></div>
         <div id="lplayers"></div>
+        <div class="lob-sub">Mapa</div>
+        <div id="lmaps" class="lmaps">${Object.keys(MAPS).map(id => `<button class="lmap" data-map="${id}">${miniMap(id)}<div class="lm-n">${MAPS[id].emoji} ${MAPS[id].name}</div><div class="lm-d">${MAPS[id].desc}</div></button>`).join('')}</div>
         <div class="lob-cfg">
-          <div class="cfg-label">Número de turnos</div>
-          <div class="cfg-row"><button id="tminus" class="round">−</button><div id="tval"></div><button id="tplus" class="round">+</button></div>
+          <div class="cfg-label">Turnos</div>
+          <button id="tminus" class="round">−</button><div id="tval"></div><button id="tplus" class="round">+</button>
           <div id="tdur" class="cfg-dur"></div>
         </div>
         <button id="startbtn" class="startbtn">▶ COMEÇAR O SHOW</button>
@@ -709,6 +763,7 @@ function renderLobby() {
     $('#tminus').onclick = () => { G.maxTurns = Math.max(10, G.maxTurns - 1); renderLobby(); };
     $('#tplus').onclick = () => { G.maxTurns = Math.min(20, G.maxTurns + 1); renderLobby(); };
     $('#startbtn').onclick = () => { if (G.players.length >= 2) startGame(); };
+    $('#lmaps').onclick = e => { const b = e.target.closest('.lmap'); if (!b) return; G.map = b.dataset.map; SFX.init(); SFX.pop(); say(`Mapa escolhido: ${MAPS[G.map].name}!`); renderLobby(); };
     $('#lplayers').onclick = e => {
       const c = e.target.closest('[data-pid]'); if (!c) return;
       const p = P(c.dataset.pid); if (!p) return;
@@ -722,6 +777,7 @@ function renderLobby() {
       : `<div class="lp empty"><div class="lpav">?</div><div class="lpname">aguardando…</div></div>`;
   }).join('');
   $('#tval').textContent = G.maxTurns;
+  document.querySelectorAll('.lmap').forEach(b => b.classList.toggle('sel', b.dataset.map === G.map));
   const mins = Math.round(G.maxTurns * (1.6 + Math.max(2, G.players.length) * 0.45));
   $('#tdur').textContent = `≈ ${mins} min com ${Math.max(2, G.players.length)} jogadores`;
   const sb = $('#startbtn');
@@ -732,8 +788,16 @@ function renderLobby() {
 /* =========================================================================
    TV — fluxo principal do jogo
    ========================================================================= */
+function miniMap(id) {
+  const b = buildBoard(MAPS[id]), th = MAPS[id].theme;
+  return `<svg viewBox="0 0 1200 800" class="mini"><rect width="1200" height="800" rx="60" fill="${th.fill}"/>
+    ${b.paths.map(ch => `<path d="${smoothPath(ch.map(i => [b.nodes[i].x, b.nodes[i].y]))}" fill="none" stroke="${th.road}" stroke-width="34" stroke-linecap="round"/>`).join('')}
+    ${b.nodes.map(n => `<circle cx="${n.x}" cy="${n.y}" r="${n.j ? 24 : 18}" fill="${SPACE[n.type].c}"/>`).join('')}</svg>`;
+}
+
 async function startGame() {
   SFX.init();
+  loadMap(G.map); buildBoardSVG();
   G.phase = 'intro';
   G.order = shuffle(G.players.map(p => p.id));
   G.players.forEach(p => { p.node = BOARD.start; p.coins = START_COINS; p.stars = 0; p.items = []; p.debuff = { ink: 0, freeze: 0 }; p.stats = { correct: 0, earned: 0, attacks: 0 }; });
@@ -864,20 +928,19 @@ function diceHide() { clearInterval(diceTimer); $('#dicebox').classList.add('hid
 function setPreview(p, left) { G.steps = left; G.preview = left > 0 ? dests(p.node, left) : null; renderBoard(); placeDice(p); }
 
 // coloca a caixa do dado no espaço livre mais longe do jogador e das casas de destino
-const DICE_SPOTS = [[300, 470], [770, 430]];
 function placeDice(p) {
   const db = $('#dicebox'); if (!db || !p) return;
   const pts = [[NODES[p.node].x, NODES[p.node].y]];
   if (G.preview) { G.preview.list.forEach(d => pts.push([NODES[d.end].x, NODES[d.end].y])); if (G.preview.fb != null) pts.push([NODES[G.preview.fb].x, NODES[G.preview.fb].y]); }
-  let best = DICE_SPOTS[0], bd = -1;
-  DICE_SPOTS.forEach(sp => { const d = Math.min(...pts.map(q => Math.hypot(q[0] - sp[0], q[1] - sp[1]))); if (d > bd) { bd = d; best = sp; } });
+  let best = MAP.dice[0], bd = -1;
+  MAP.dice.forEach(sp => { const d = Math.min(...pts.map(q => Math.hypot(q[0] - sp[0], q[1] - sp[1]))); if (d > bd) { bd = d; best = sp; } });
   db.style.left = best[0] * BS + 'px'; db.style.top = best[1] * BS + 'px';
 }
 
-async function move(p, steps) {
+async function move(p, steps, extra) {
   let left = steps;
   setPreview(p, left);
-  await sleep(T(900));            // dá tempo de ver onde pode cair
+  await sleep(T(extra ? 400 : 900));            // dá tempo de ver onde pode cair
   while (left > 0) {
     diceSteps(left);
     const node = NODES[p.node];
@@ -947,7 +1010,7 @@ async function offerStar(p, landing) {
 }
 
 /* ---------- casas ---------- */
-async function land(p) {
+async function land(p, depth = 0) {
   const n = NODES[p.node];
   if (p._onStar) { delete p._onStar; return; }
   // armadilha
@@ -998,6 +1061,16 @@ async function land(p) {
     }
     case 'V': await villain(p); break;
     case 'T': await thief(p); break;
+    case 'I': await iceSlide(p, depth); break;
+    case 'C': await cableCar(p); break;
+    case 'A': await avalanche(p); break;
+    case 'F': {
+      const d = addCoins(p, -6 * mult); burst(pXY(p), ['🔥', '🔥', '💥'], 14, 140); flash(pXY(p), 'boom');
+      await say(d ? `Lava! ${p.name} queimou ${-d} moedas!` : `Lava! Ainda bem que ${p.name} não tinha moedas pra queimar.`, { wait: true });
+      break;
+    }
+    case 'Y': await geyser(p, depth); break;
+    case 'Z': await eruption(p); break;
     default: break;
   }
 }
@@ -1084,6 +1157,62 @@ async function shop(p) {
     banner(ITEMS[k].e, `${p.name} comprou ${ITEMS[k].n}`, '', 2000);
     await say(`${p.name} comprou ${ITEMS[k].n}! Hum... alguém vai se dar mal.`, { wait: true });
   } else await say(`${p.name} só veio olhar a vitrine.`);
+}
+
+// ----- casas especiais dos mapas Neve e Vulcão
+async function iceSlide(p, depth) {
+  if (depth > 0) { await say('Gelo de novo, mas dessa vez deu pra frear!'); return; }
+  const k = 1 + rnd(3);
+  SFX.whoosh(); burst(pXY(p), ['❄️', '💨'], 10, 110);
+  banner('🧊', `${p.name} escorregou no gelo!`, `Desliza mais ${k} casa${k > 1 ? 's' : ''}`, 1800);
+  await say(`Escorregou! ${p.name} desliza mais ${k} ${k > 1 ? 'casas' : 'casa'}!`);
+  await move(p, k, true);
+  await land(p, depth + 1);
+}
+async function geyser(p, depth) {
+  if (depth > 0) { await say('O gêiser está recarregando...'); return; }
+  SFX.whoosh(); burst(pXY(p), ['💨', '💧', '💦'], 16, 160); flash(pXY(p), 'ice');
+  banner('💨', `Gêiser! ${p.name} foi lançado!`, 'Avança 4 casas', 1800);
+  await say(`Gêiser! ${p.name} voa quatro casas pra frente!`);
+  await move(p, 4, true);
+  await land(p, depth + 1);
+}
+async function cableCar(p) {
+  const other = NODES.find(n => n.type === 'C' && n.id !== p.node);
+  if (!other) return;
+  if (p.coins < 5) { await say(`Teleférico! Mas a passagem custa cinco moedas, e ${p.name} está sem dinheiro.`, { wait: true }); return; }
+  say(`Teleférico! ${p.name}, quer pagar cinco moedas para ir até a outra estação?`);
+  const r = await ask(p, { screen: 'choose', title: '🚡 Pegar o teleférico por 5 🪙?', sub: 'Leva você direto para a outra estação do mapa', opts: [{ label: '🚡 Sim, partiu!' }, { label: 'Não, fico aqui' }] }, T(20000), { i: 1 }, '🚡');
+  if (!r || r.i !== 0) { await say(`${p.name} preferiu ir a pé.`); return; }
+  addCoins(p, -5);
+  const from = tokenPos(p); p.node = other.id; renderBoard();
+  await arcTokens([{ p, from, to: tokenPos(p) }]);
+  burst(pXY(p), '✨', 10, 100);
+  await say(`Lá vai ${p.name} pelo teleférico!`, { wait: true });
+}
+function stepBack(node, k) { let n = node; for (let i = 0; i < k; i++) { const pv = NODES[n].prev; if (!pv.length) break; n = pv[0]; } return n; }
+async function avalanche(p) {
+  SFX.evil(); flash(pXY(p), 'ice'); burst(pXY(p), ['❄️', '🏔️', '💨'], 22, 260);
+  const hit = others(p).filter(o => Math.hypot(NODES[o.node].x - NODES[p.node].x, NODES[o.node].y - NODES[p.node].y) < 260);
+  if (!hit.length) { await say(`Avalanche! Mas não tinha ninguém por perto. Sorte de todo mundo!`, { wait: true }); return; }
+  banner('🏔️', 'AVALANCHE!', `${hit.map(o => o.name).join(', ')} ${hit.length > 1 ? 'voltam' : 'volta'} 3 casas`, 2400, 'hot');
+  const moves = hit.map(o => { const from = tokenPos(o); o.node = stepBack(o.node, 3); return { p: o, from }; });
+  renderBoard();
+  await arcTokens(moves.map(m => ({ ...m, to: tokenPos(m.p) })));
+  await say(`Avalanche! ${hit.map(o => o.name).join(' e ')} ${hit.length > 1 ? 'foram arrastados' : 'foi arrastado'} três casas pra trás!`, { wait: true });
+}
+async function eruption(p) {
+  SFX.evil(); flash(pXY(p), 'boom'); burst(pXY(p), ['🔥', '🪨', '💥'], 22, 260);
+  const os = others(p); if (!os.length) return;
+  const v = pick(os);
+  let n = v.node, guard = 0;
+  while (!NODES[n].j && NODES[n].prev.length && guard++ < 30) n = NODES[n].prev[0];
+  banner('🌋', 'ERUPÇÃO!', `${v.name} volta para o começo do trecho`, 2400, 'hot');
+  await say(`Erupção! Uma pedra de lava acertou ${v.name}, que volta para o começo do trecho!`);
+  const from = tokenPos(v); v.node = n; renderBoard();
+  await arcTokens([{ p: v, from, to: tokenPos(v) }]);
+  burst(pXY(v), ['🔥', '💥'], 10, 100);
+  await sleep(T(600));
 }
 
 async function thief(p) {
@@ -1543,7 +1672,7 @@ async function finale() {
   }
   $('#again').onclick = () => {
     const room = G.room, ps = G.players, mt = G.maxTurns;
-    G = newGame(room); G.maxTurns = mt;
+    const mp = G.map; G = newGame(room); G.maxTurns = mt; G.map = mp;
     ps.forEach(p => { p.ui = null; G.players.push(p); setUI(p, { screen: 'lobby' }); });
     try { localStorage.removeItem('qp_tv'); } catch (e) { }
     closeOverlay(); $('#lobby').dataset.built = ''; stageMode('lobby'); renderLobby();
@@ -1557,6 +1686,7 @@ async function finale() {
 function makeRoom() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; return Array.from({ length: 4 }, () => A[rnd(A.length)]).join(''); }
 
 function tvMain(resume) {
+  if (resume) loadMap(resume.map);
   buildTV(); Voice.init();
   if (resume) {
     G = resume; Object.keys(pending).forEach(k => delete pending[k]);

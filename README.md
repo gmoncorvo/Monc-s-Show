@@ -7,7 +7,8 @@ Jogo de tabuleiro + quiz para até 8 jogadores. A TV (notebook) mostra o show e 
 - `index.html`: o jogo pronto, em arquivo único. É ele que vai para a hospedagem.
 - `game.js`: lógica da TV (estado, tabuleiro, quiz, itens) e do celular (controle).
 - `game.css`: visual da TV e do celular.
-- `questions.js`: banco de perguntas (7 temas × fácil/médio/difícil) e perguntas de chute numérico.
+- `questions.js`: banco de perguntas original (7 temas × fácil/médio/difícil) e perguntas de chute numérico.
+- `questions_more.js`: expansão do banco (cerca de 770 perguntas no total e 76 de chute numérico).
 - `template.html`: esqueleto HTML que recebe o CSS e o JS no build.
 - `build.py`: junta tudo em `index.html` e insere URL e chave do Supabase.
 - `test.py`: simula uma partida completa com 3 celulares (Playwright).
@@ -17,6 +18,10 @@ Jogo de tabuleiro + quiz para até 8 jogadores. A TV (notebook) mostra o show e 
 ```
 python build.py https://SEU-PROJETO.supabase.co SUA_ANON_KEY
 ```
+
+## Mapas
+
+- 🌳 **Floresta**, ❄️ **Picos Gelados** e 🌋 **Ilha Vulcânica**, escolhidos no lobby. Ficam no objeto `MAPS` do `game.js`: junções (bifurcações), trechos com os tipos de casa e o tema visual.
 
 ## Como funciona
 

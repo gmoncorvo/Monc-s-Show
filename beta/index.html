@@ -2048,9 +2048,12 @@ function sentences(text) {   // pedaços curtos: o Chrome corta falas longas soz
   parts.forEach(p => { p = p.trim(); if (!p) return; if (out.length && (out[out.length - 1] + ' ' + p).length < 140) out[out.length - 1] += ' ' + p; else out.push(p); });
   return out;
 }
+const STALE_MS = 1500;   // fala que esperou mais que isso na fila perdeu o momento
 function speechNext() {
   if (SPQ.busy) return;
-  const it = SPQ.q.shift(); if (!it) return;
+  let it = SPQ.q.shift();
+  while (it && !it.keep && !FAST && Date.now() - it.at > STALE_MS) { if (it.onEnd) it.onEnd(); it = SPQ.q.shift(); }
+  if (!it) return;
   SPQ.busy = true;
   if (it.onStart) it.onStart();
   let done = false, tm = null;
@@ -2064,7 +2067,7 @@ function speechNext() {
     if (k >= chunks.length || Voice.muted) return fin();
     const u = new SpeechSynthesisUtterance(chunks[k++]);
     SPQ.cur = u;   // guarda a referência: sem isso o Chrome às vezes esquece o "fim da fala"
-    u.lang = 'pt-BR'; if (Voice.voice) u.voice = Voice.voice; u.rate = 1.08; u.pitch = 1.05;
+    u.lang = 'pt-BR'; if (Voice.voice) u.voice = Voice.voice; u.rate = 1.15; u.pitch = 1.05;
     let ended = false;
     const next = () => { if (ended) return; ended = true; clearTimeout(tm); speakChunk(); };
     u.onend = next; u.onerror = next;
@@ -2079,7 +2082,20 @@ function speakQueued(it) {
     const i = SPQ.q.findIndex(x => !x.keep); if (i < 0) break;
     const [d] = SPQ.q.splice(i, 1); if (d.onStart) d.onStart(); if (d.onEnd) d.onEnd();
   }
+  it.at = Date.now();
   SPQ.q.push(it); speechNext();
+}
+// A: ponto de sincronia — espera o Monc terminar (com limite, e sem esperar se estiver no mudo)
+function voiceIdle(max = 9000) {
+  if (FAST || Voice.muted || !('speechSynthesis' in window)) return Promise.resolve();
+  const t0 = Date.now();
+  return new Promise(res => { const chk = () => ((!SPQ.busy && !SPQ.q.length) || Date.now() - t0 > max) ? res() : setTimeout(chk, 120); chk(); });
+}
+// leitura da pergunta: as alternativas aparecem quando o Monc termina de ler (mínimo = tempo de leitura, máximo 10 s)
+function readAloud(text, rm) {
+  const spoken = say(text, { wait: true });
+  if (FAST || Voice.muted || !('speechSynthesis' in window)) return sleep(rm);
+  return Promise.all([sleep(rm), Promise.race([spoken, sleep(T(10000))])]);
 }
 function stopSpeech() { SPQ.q.splice(0).forEach(d => { if (d.onEnd) d.onEnd(); }); try { speechSynthesis.cancel(); } catch (e) { } }
 
@@ -2879,6 +2895,7 @@ async function comebackBonus() {
 const usableItems = p => [...new Set(p.items)].filter(k => !ITEMS[k].passive && !(k === 'trap' && G.traps[p.node] !== undefined));
 
 async function playerTurn(p) {
+  await voiceIdle();
   G.cur = p.id; stageMode('board'); renderSide();
   if (p.skip) {
     delete p.skip; renderSide();
@@ -2917,6 +2934,7 @@ async function playerTurn(p) {
   diceHide();
   await land(p);
   renderSide();
+  await voiceIdle();
   await sleep(T(700));
 }
 
@@ -3622,13 +3640,14 @@ async function duel(p) {
 
 // pergunta do duelo: vence quem acertar primeiro pelo tempo medido na tela de cada um
 async function duelQuestion(a, b, q, n) {
+  await voiceIdle();
   const parts = [a, b], ctl = {};
   let cand = null, grace = null;
   const lab = '⚔️ Duelo';
   renderQuestionTV(q, { dyn: lab, n: n + 1, tot: 3, phase: 'read', parts, duel: true });
   const rm = readMs(q.q);
   parts.forEach(p => setUI(p, { screen: 'wait', msg: '👀 Leia a pergunta', sub: q.q, read: rm, _ms: rm }));
-  say(q.q); await sleep(rm);
+  await readAloud(q.q, rm);
   const lim = LIMIT[q.lv];
   renderQuestionTV(q, { dyn: lab, n: n + 1, tot: 3, phase: 'ask', parts, lim, duel: true });
   const ans = await collect(parts, p => qUI(p, q, lab, n + 1, 3, false), lim, (p, x, all) => {
@@ -3655,10 +3674,11 @@ async function duelQuestion(a, b, q, n) {
 }
 
 async function soloQuestion(p, q, label) {
+  await voiceIdle();
   renderQuestionTV(q, { dyn: label, n: 1, tot: 1, phase: 'read', parts: [p] });
   const rm = readMs(q.q);
   setUI(p, { screen: 'wait', msg: '👀 Leia a pergunta', sub: q.q, read: rm, _ms: rm });
-  say(q.q); await sleep(rm);
+  await readAloud(q.q, rm);
   const lim = LIMIT[q.lv];
   renderQuestionTV(q, { dyn: label, n: 1, tot: 1, phase: 'ask', parts: [p], lim });
   const ans = await collect([p], x => qUI(x, q, label, 1, 1, false), lim, x => markAnswered(x));
@@ -3772,12 +3792,12 @@ async function gate(parts, ms, uiOf) {
 
 // uma pergunta de múltipla escolha; devolve o conjunto de quem acertou (já com o Regravar!)
 async function runChoiceQuestion(q, parts, n, tot, dynLabel, withFx, opt = {}) {
+  await voiceIdle();
   const Q = G.Q;
   renderQuestionTV(q, { dyn: dynLabel, n, tot, phase: 'read', parts, rm: readMs(q.q), extra: opt.extra });
   const rm = readMs(q.q);
   Q.all.forEach(p => setUI(p, parts.includes(p) ? { screen: 'wait', msg: '👀 Leia a pergunta', sub: q.q, read: rm, _ms: rm } : { screen: 'wait', msg: opt.outMsg || '👀 Assista', sub: q.q }));
-  say(q.q);
-  await sleep(rm);
+  await readAloud(q.q, rm);
   const lim = LIMIT[q.lv];
   renderQuestionTV(q, { dyn: dynLabel, n, tot, phase: 'ask', parts, lim, extra: opt.extra });
   const ticker = setInterval(() => SFX.tick(), 1000);
@@ -3838,6 +3858,7 @@ const addOk = (sc, p, t) => { sc[p.id].pts += 1; sc[p.id].tb -= t; p.stats.corre
 
 /* ---------- Monquiz ---------- */
 async function quizRound() {
+  await voiceIdle();
   stageMode('quiz');
   const dyn = G.nextDyn || nextDyn(); G.lastDyn = dyn; G.quizNo++;
   const D = DYNS[dyn];
@@ -3941,12 +3962,13 @@ async function dynNumber(parts, sc, D) {
   for (let i = 0; i < 3; i++) await runNumberQuestion(drawNum(), parts, i + 1, 3, sc);
 }
 async function runNumberQuestion(nq, parts, n, tot, sc) {
+  await voiceIdle();
   const dynLabel = '🔢 Chute Numérico';
   const head = `<div class="qhead"><span class="qdyn">${dynLabel}</span><span class="qnum">Pergunta ${n} de ${tot}</span></div>`;
   const rm = readMs(nq.q);
   overlay(`<div class="quiz read">${head}<div class="qtext">${esc(nq.q)}</div><div class="qtimer read"><div class="qtbar grow" style="animation-duration:${rm}ms"></div></div><div class="numhint">📖 Leitura… depois digite seu chute ${G.online ? 'no painel' : 'no celular'}!</div>${answeredRow(parts)}</div>`, 'quizpanel');
   parts.forEach(p => setUI(p, { screen: 'wait', msg: '👀 Leia a pergunta', sub: nq.q, read: rm, _ms: rm }));
-  say(nq.q); await sleep(rm);
+  await readAloud(nq.q, rm);
   const lim = T(25000);
   $('.quiz').classList.replace('read', 'ask');
   $('.qtimer').className = 'qtimer'; $('.qtimer').innerHTML = `<div class="qtbar" style="animation-duration:${lim}ms"></div>`;
@@ -4049,6 +4071,7 @@ function hiloNumber(nq) {
 async function dynHiLo(parts, sc, D) {
   const N = 5;
   for (let i = 0; i < N; i++) {
+    await voiceIdle();
     const nq = drawNum(), num = hiloNumber(nq), up = nq.a > num;
     const rm = readMs(nq.q), lim = T(10000);
     const draw = (phase, okSet) => overlay(`<div class="quiz hilo ${phase}"><div class="qhead"><span class="qdyn">↕️ Mais ou Menos</span><span class="qnum">Pergunta ${i + 1} de ${N}</span></div>
@@ -4057,8 +4080,7 @@ async function dynHiLo(parts, sc, D) {
       ${answeredRow(parts, phase === 'reveal' ? { phase, okSet } : null)}</div>`, 'quizpanel');
     draw('read');
     parts.forEach(p => setUI(p, { screen: 'wait', msg: '👀 Leia a pergunta', sub: nq.q, read: rm, _ms: rm }));
-    say(`${nq.q} Eu digo: ${fmtA(nq, num)}. É mais ou menos?`);
-    await sleep(rm);
+    await readAloud(`${nq.q} Eu digo: ${fmtA(nq, num)}. É mais ou menos?`, rm);
     draw('ask');
     const ans = await collect(parts, p => ({ screen: 'hilo', q: nq.q, num: fmtA(nq, num), unit: nq.unit, n: i + 1, tot: N, fx: { ink: p.debuff.ink > 0, inkC: p.debuff.inkC, freeze: p.debuff.freeze ? G.quizNo : 0 } }), lim, p => { markAnswered(p); SFX.pop(); });
     parts.forEach(p => { if (p.debuff.ink > 0) p.debuff.ink--; });
@@ -4086,13 +4108,14 @@ async function dynPotato(parts, sc, D) {
     tokAnim(holder, 'hit');
     await say(i === 0 ? `A batata começa com ${holder.name}!` : `Batata com ${holder.name}!`);
     await sleep(T(900));
+    await voiceIdle();
     const q = drawQ(randTheme(), lv[i]);
     const label = `🥔 Batata Quente · ${holder.emoji} ${holder.name}`;
     // a pergunta só para quem está com a batata (leitura + 8 s)
     renderQuestionTV(q, { dyn: label, n: i + 1, tot: N, phase: 'read', parts: [holder], rm: readMs(q.q) });
     const rm = readMs(q.q);
     parts.forEach(p => setUI(p, p === holder ? { screen: 'wait', msg: '🥔 A batata é sua! Leia', sub: q.q, read: rm, _ms: rm } : { screen: 'wait', msg: `🥔 ${holder.name} está com a batata`, sub: q.q }));
-    say(q.q); await sleep(rm);
+    await readAloud(q.q, rm);
     const lim = T(8000);
     renderQuestionTV(q, { dyn: label, n: i + 1, tot: N, phase: 'ask', parts: [holder], lim });
     const ans = await collect([holder], p => qUI(p, q, '🥔 Batata Quente', i + 1, N, true), lim, p => { markAnswered(p); SFX.pop(); });
@@ -4155,6 +4178,7 @@ let renderLive = () => { };
 
 /* ---------- prêmios do Monquiz ---------- */
 async function roundResults(dyn, sc, parts, absent) {
+  await voiceIdle();
   let ranking = rankRound(sc, parts);
   const nAll = G.players.length;
   absent.forEach(p => ranking.push({ p, place: nAll, absent: true }));      // desconectado leva a recompensa de último
@@ -4210,6 +4234,7 @@ async function roundResults(dyn, sc, parts, absent) {
 
 /* ---------- final ---------- */
 async function finale() {
+  await voiceIdle();
   G.cur = null; stageMode('quiz'); renderSide();
   waitAll('🏁 Fim de jogo!', LOOK());
   SFX.fanfare();

@@ -7,7 +7,7 @@
    vão como eventos e cada computador reproduz localmente.
    ========================================================================= */
 const MIRROR = { host: false, client: false, seq: 0, last: {}, timer: null, lastFull: 0, fullTimer: null, q: [] };
-const MROOTS = ['lobby', 'turninfo', 'roomtag', 'plist', 'dicebox', 'ov', 'bubble', 'hl', 'traps', 'bankpot', 'starG', 'brG', 'prevG', 'tokens', 'stepsG'];
+const MROOTS = ['lobby', 'turninfo', 'roomtag', 'plist', 'dicebox', 'ov', 'hud', 'bubble', 'hl', 'traps', 'bankpot', 'starG', 'brG', 'prevG', 'tokens', 'stepsG'];
 
 /* ---------- anfitrião ---------- */
 // eventos (sons, voz, animações) vão agrupados na próxima atualização da tela: menos mensagens
@@ -48,7 +48,7 @@ function mirrorHostStart() {
     .observe($('#stage'), { subtree: true, childList: true, attributes: true, characterData: true });
   // sons do anfitrião tocam em todos os computadores
   SFX._o = {};
-  ['step', 'coin', 'lose', 'dice', 'pop', 'ok', 'bad', 'tick', 'fanfare', 'evil', 'whoosh'].forEach(n => {
+  ['step', 'coin', 'lose', 'dice', 'pop', 'ok', 'bad', 'tick', 'fanfare', 'evil', 'whoosh', 'clap', 'caw', 'hit', 'crack'].forEach(n => {
     const o = SFX[n]; SFX._o[n] = o;
     SFX[n] = function (...a) { mFx('sfx', [n]); return o.apply(this, a); };
   });
@@ -125,6 +125,7 @@ const FXH = {
   flash: (xy, cls) => flash(xy, cls),
   floatAt: (x, y, text, color) => floatAt(x, y, text, color),
   arc: moves => arcTokens(moves.map(m => ({ p: { id: m.id }, from: m.from, to: m.to }))),
+  proj: (from, to, chars, dur) => projectile(from, to, chars, dur),
   sfx: n => { if (typeof SFX[n] === 'function') SFX[n](); },
   say: text => clientSpeak(text),
   wheel: (final, dur) => {
@@ -145,11 +146,11 @@ function onlineShell(isHost) {
   document.body.className = 'online ' + (isHost ? 'host' : 'client');
   document.body.innerHTML = `<div id="stagebox"></div>
     <aside id="opanel">
-      <div class="ohead"><span class="ologo">⭐ MONC'S SHOW <small>online</small></span>
+      <div class="ohead"><span class="ologo">MONC'S SHOW <small>● ao vivo · online</small></span>
         <span><button id="ovoice" class="mini" title="Voz do apresentador">🔊</button><button id="osfx" class="mini" title="Efeitos sonoros">🎵</button></span></div>
       <div id="pbar"></div><div id="pmain"></div>
     </aside>
-    <div id="soundgate"><div class="sg-box"><div class="sg-e">🔊</div><div class="sg-t">Clique para entrar no show</div><div class="sg-s">O navegador só libera o som e a voz do apresentador depois de um clique.</div></div></div>`;
+    <div id="soundgate"><div class="sg-box"><div class="sg-e">🎤</div><div class="sg-t">Clique para entrar no estúdio</div><div class="sg-s">O navegador só libera o som e a voz do Monc depois de um clique.</div></div></div>`;
   $('#ovoice').onclick = () => { Voice.muted = !Voice.muted; $('#ovoice').textContent = Voice.muted ? '🔇' : '🔊'; if (Voice.muted) try { speechSynthesis.cancel(); } catch (e) { } };
   $('#osfx').onclick = () => { SFX.on = !SFX.on; $('#osfx').style.opacity = SFX.on ? 1 : 0.4; };
   $('#soundgate').onclick = () => {
@@ -187,7 +188,7 @@ function onlineHomeMain() {
   try { const s = JSON.parse(ls('qp_tv') || 'null'); if (s && Date.now() - s.ts < 6 * 3600e3 && s.G && s.G.online && s.G.phase !== 'lobby') saved = s.G; } catch (e) { }
   let emoji = ls('qp_emoji' + LSX) || pick(AVATARS);
   document.body.innerHTML = `<div class="pjoin homebox onlinehome">
-    <div class="plogo">⭐ MONC'S<br>SHOW</div>
+    <div class="plogo">MONC'S<br>SHOW<span class="onair sm"><span class="rec"></span>AO VIVO</span></div>
     <div class="psub">💻 <b>Modo online</b>: cada um joga no seu computador e todos veem o mesmo tabuleiro.<br>Dica: abram uma chamada no Discord para conversar.</div>
     <label class="plabel">Seu nome</label>
     <input id="nm" maxlength="14" placeholder="Digite seu nome" value="${esc(ls('qp_name' + LSX) || '')}" autocomplete="off">

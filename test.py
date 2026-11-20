@@ -6,7 +6,7 @@ async def bot(page, name, stop):
     while not stop['done']:
         try:
             await page.wait_for_timeout(120)
-            for sel in ['.pbig.roll','.pitem','.popt:not([disabled])','.ppl','.pqo:not([disabled])','.splat']:
+            for sel in ['.iceblk','.pskip:not([disabled])','.pbig.roll','.pitem','.popt:not([disabled])','.ppl:not([disabled])','.pqo:not([disabled])','.splat']:
                 els = await page.query_selector_all(sel)
                 els = [e for e in els if await e.is_enabled()]
                 if els:
@@ -14,21 +14,21 @@ async def bot(page, name, stop):
                         # sometimes use item
                         items = await page.query_selector_all('.pitem')
                         e = random.choice(items) if items and random.random()<0.5 else await page.query_selector('.pbig.roll')
-                        if e and await e.is_enabled(): await e.click()
+                        if e and await e.is_enabled(): await e.click(timeout=2000)
                     else:
-                        await random.choice(els).click()
+                        await random.choice(els).click(timeout=2000)
                     break
-            if await page.query_selector('.keypad'):
+            if await page.query_selector('.keypad') and not await page.query_selector('.iceblk'):
                 ok = await page.query_selector('.key.ok')
                 if ok and await ok.is_enabled():
                     for d in str(random.randint(1,3000)):
-                        await page.click(f'.key[data-k="{d}"]')
-                    await page.click('.key.ok')
+                        await page.click(f'.key[data-k="{d}"]', timeout=2000)
+                    await page.click('.key.ok', timeout=2000)
         except Exception as ex:
             pass
 async def main():
     async with async_playwright() as p:
-        b = await p.chromium.launch()
+        b = await p.chromium.launch(**({'executable_path':'/usr/bin/google-chrome'} if __import__('os').path.exists('/usr/bin/google-chrome') else {}))
         ctx = await b.new_context()
         tv = await ctx.new_page(); await tv.set_viewport_size({'width':1920,'height':1080})
         def hook(pg,label):
@@ -55,10 +55,11 @@ async def main():
             await tv.wait_for_timeout(400)
             if await tv.query_selector('#again'):
                 await tv.wait_for_timeout(1500); await tv.screenshot(path='shots/tv_final.png'); await phones[0].screenshot(path='shots/ph_final.png'); break
-            for key,sel in [('board','#dicebox:not(.hidden)'),('quiz','.quiz.ask'),('reveal','.quiz.reveal'),('results','.results'),('wheel','.wheelbox'),('vs','.vs'),('shop','.shopbox'),('num','.numrows')]:
+            for key,sel in [('board','#dicebox:not(.hidden)'),('quiz','.quiz.ask'),('reveal','.quiz.reveal'),('results','.results'),('wheel','.wheelbox'),('vs','.vs'),('shop','.shopbox'),('num','.numrows'),('dir','.wheelbox.dir'),('atk','.atkcard'),('tf','.quiz.tf'),('hilo','.quiz.hilo'),('potato','.potato'),('clock','.clockq'),('bank','.betrow'),('pick','.themegrid'),('order','.introSub'),('box','.mbox'),('clockdec','.clock:not(.hidden)')]:
                 if key not in shots and await tv.query_selector(sel):
                     shots.add(key); await tv.screenshot(path=f'shots/tv_{key}.png')
                     for i,ph in enumerate(phones[:1]): await ph.screenshot(path=f'shots/ph_{key}.png')
+                    print('shot', key, round(time.time()-t0), flush=True)
         stop['done']=True
         turn = await tv.inner_text('#turninfo')
         print('elapsed',round(time.time()-t0),'turninfo',turn,'final', bool(await tv.query_selector('#again')))

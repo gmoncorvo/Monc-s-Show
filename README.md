@@ -1,6 +1,21 @@
 # Monc's Show
 
-Jogo de tabuleiro + quiz para até 8 jogadores. A TV (notebook) mostra o show e cada pessoa joga pelo celular.
+Programa de auditório de baixo orçamento em forma de jogo: tabuleiro + quiz para até 8 jogadores. A TV (notebook) mostra o show e cada pessoa joga pelo celular. O apresentador é o **Monc** (com o corvo **Alphie** no ombro), a moeda é o **Moncoin** e quem tiver mais **Moncrofones de Ouro** vence.
+
+## Regras principais
+
+- 10 Moncoins para começar, banco com 5. O Moncrofone custa 20.
+- 30 s para cada decisão (rolar, caminho, Moncrofone, loja, duelo), com contagem regressiva nos 10 s finais. Esgotou, o jogo decide sozinho.
+- Itens: no máximo 3 na mochila, **um por turno e só antes de rolar o dado**. Nada é usado durante o Monquiz.
+- A partir do 2º turno, a ordem segue a classificação do último Monquiz.
+- Reta final nos 3 últimos turnos (casas azuis/vermelhas valem o dobro). O Monquiz do último turno é a **Grande Final**: prêmios em dobro.
+- 3 Moncrofones bônus sorteados por partida, entre 12 critérios.
+- **16 itens em 4 níveis** (baixo 5, médio 7, arriscado 8, alto 12). Loja com 8 itens sorteados e uma compra por visita.
+- Casas: Roleta (8 resultados), **Diretor** (10 efeitos absurdos), Duelo (aposta em Moncoins ou Moncrofones), Ladrão (40 Moncoins, passa pelo Escudo), Presente, Loja, Banco e as casas exclusivas de cada mapa.
+- **Monquiz**: 11 dinâmicas (Velocidade, Quem Sabe Mais, Tema Fixo, Eliminação, Chute Numérico, Escolha do Competidor, Banca do Apresentador, V ou F Relâmpago, Mais ou Menos, Batata Quente, Contra o Relógio). O anfitrião escolhe no lobby quais ficam ativas (mínimo 3), e a próxima é anunciada logo que a anterior termina.
+- As alternativas só aparecem no celular, depois do tempo de leitura (2 s + 0,25 s por palavra, até 7 s). "Continuar" só pula quando todos apertam.
+- Todos ganham Moncoins e um item pela colocação no Monquiz (o último leva um item arriscado).
+- **Modo 10+** no lobby: tira perguntas impróprias para crianças.
 
 ## Arquivos
 
@@ -17,7 +32,7 @@ Jogo de tabuleiro + quiz para até 8 jogadores. A TV (notebook) mostra o show e 
 ## Build
 
 ```
-python build.py https://SEU-PROJETO.supabase.co SUA_ANON_KEY
+py build.py https://SEU-PROJETO.supabase.co SUA_ANON_KEY
 ```
 
 ## Mapas
@@ -49,6 +64,7 @@ python build.py https://SEU-PROJETO.supabase.co SUA_ANON_KEY
 Para rodar o teste:
 
 ```
-python -m http.server 8765
-python test.py
+py -m http.server 8765
+py test.py          # modo TV + celular
+py test_online.py   # modo online (anfitrião + 2 convidados)
 ```

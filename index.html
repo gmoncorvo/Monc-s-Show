@@ -1821,7 +1821,7 @@ const DYNS = {
   number:  { n: 'Chute Numérico', e: '🔢', d: 'Três perguntas de número. Vence quem chegar mais perto!' },
   pick:    { n: 'Escolha do Competidor', e: '🙋', d: 'Um jogador sorteado escolhe o tema das cinco perguntas!' },
   bank:    { n: 'Banca do Apresentador', e: '🎲', d: 'Antes de cada pergunta, aposte de 1 a 5 Moncoins de verdade. Acertou, ganha o dobro!' },
-  tf:      { n: 'Verdadeiro ou Falso Relâmpago', e: '✅', d: 'Dez afirmações, três segundos cada. Verdadeiro ou falso? Sem pensar muito!' },
+  tf:      { n: 'Verdadeiro ou Falso Relâmpago', e: '✅', d: 'Dez afirmações, onze segundos cada. Verdadeiro ou falso? Responda rápido!' },
   hilo:    { n: 'Mais ou Menos',  e: '↕️', d: 'O Monc diz um número. A resposta certa é maior ou menor?' },
   potato:  { n: 'Batata Quente',  e: '🥔', d: 'Só quem está com a batata responde. Acertou, passa pra quem quiser. Errou, fica com uma batata!' },
   clock:   { n: 'Contra o Relógio', e: '⏱️', d: 'Quarenta segundos para acertar o máximo. Errou? Fica dois segundos travado!' },
@@ -2037,28 +2037,66 @@ const Voice = {
     choose(); speechSynthesis.onvoiceschanged = choose;
   },
 };
-let sayToken = 0;
+// Fila de falas: o Monc nunca é cortado no meio. Cada fala espera a anterior terminar.
+// Se acumular fala demais (o jogo andou mais rápido que a voz), as que ainda nem
+// começaram são puladas; a que está tocando sempre vai até o fim.
+const SPQ = { q: [], busy: false, cur: null };
+const MAX_QUEUE = 3;
+function sentences(text) {   // pedaços curtos: o Chrome corta falas longas sozinho
+  const parts = String(text).match(/[^.!?…]+[.!?…]*\s*/g) || [String(text)];
+  const out = [];
+  parts.forEach(p => { p = p.trim(); if (!p) return; if (out.length && (out[out.length - 1] + ' ' + p).length < 140) out[out.length - 1] += ' ' + p; else out.push(p); });
+  return out;
+}
+function speechNext() {
+  if (SPQ.busy) return;
+  const it = SPQ.q.shift(); if (!it) return;
+  SPQ.busy = true;
+  if (it.onStart) it.onStart();
+  let done = false, tm = null;
+  const fin = () => { if (done) return; done = true; clearTimeout(tm); SPQ.busy = false; SPQ.cur = null; if (it.onEnd) it.onEnd(); speechNext(); };
+  if (FAST) { tm = setTimeout(fin, 20); return; }
+  if (Voice.muted || !('speechSynthesis' in window) || !it.text) { tm = setTimeout(fin, it.silentMs); return; }
+  const chunks = sentences(it.text);
+  let k = 0;
+  const speakChunk = () => {
+    if (done) return;
+    if (k >= chunks.length || Voice.muted) return fin();
+    const u = new SpeechSynthesisUtterance(chunks[k++]);
+    SPQ.cur = u;   // guarda a referência: sem isso o Chrome às vezes esquece o "fim da fala"
+    u.lang = 'pt-BR'; if (Voice.voice) u.voice = Voice.voice; u.rate = 1.08; u.pitch = 1.05;
+    let ended = false;
+    const next = () => { if (ended) return; ended = true; clearTimeout(tm); speakChunk(); };
+    u.onend = next; u.onerror = next;
+    clearTimeout(tm); tm = setTimeout(next, 3000 + u.text.length * 120);   // segurança se o navegador não avisar o fim
+    try { speechSynthesis.speak(u); } catch (e) { next(); }
+  };
+  speakChunk();
+}
+function speakQueued(it) {
+  // descarta falas antigas que ainda não começaram (nunca a que está tocando nem as marcadas "keep")
+  while (SPQ.q.length >= MAX_QUEUE) {
+    const i = SPQ.q.findIndex(x => !x.keep); if (i < 0) break;
+    const [d] = SPQ.q.splice(i, 1); if (d.onStart) d.onStart(); if (d.onEnd) d.onEnd();
+  }
+  SPQ.q.push(it); speechNext();
+}
+function stopSpeech() { SPQ.q.splice(0).forEach(d => { if (d.onEnd) d.onEnd(); }); try { speechSynthesis.cancel(); } catch (e) { } }
+
 function say(text, opt = {}) {
-  const token = ++sayToken;
   const bubble = $('#bubble'), host = $('#host');
-  if (bubble) { bubble.textContent = text; bubble.classList.remove('pop'); void bubble.offsetWidth; bubble.classList.add('pop'); }
   const spoken = String(text).replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '').replace(/\s+/g, ' ').trim();
-  mFx('say', [spoken]);
   const est = Math.min(10000, 700 + spoken.length * 62);
   return new Promise(res => {
-    let done = false;
-    const fin = () => { if (done) return; done = true; if (token === sayToken && host) host.classList.remove('talk'); res(); };
-    if (host) host.classList.add('talk');
-    if (FAST) { setTimeout(fin, 20); return; }
-    if (Voice.muted || !('speechSynthesis' in window) || !spoken) { setTimeout(fin, opt.wait ? est * 0.55 : 900); return; }
-    try {
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(spoken);
-      u.lang = 'pt-BR'; if (Voice.voice) u.voice = Voice.voice; u.rate = 1.08; u.pitch = 1.05;
-      u.onend = fin; u.onerror = fin;
-      speechSynthesis.speak(u);
-    } catch (e) { }
-    setTimeout(fin, est + 1500);
+    speakQueued({
+      text: spoken, keep: !!opt.wait, silentMs: opt.wait ? est * 0.55 : 900,
+      onStart: () => {
+        if (bubble) { bubble.textContent = text; bubble.classList.remove('pop'); void bubble.offsetWidth; bubble.classList.add('pop'); }
+        if (host) host.classList.add('talk');
+        mFx('say', [spoken]);
+      },
+      onEnd: () => { if (host && !SPQ.q.length) host.classList.remove('talk'); res(); },
+    });
   });
 }
 
@@ -2347,7 +2385,7 @@ function buildTV(container) {
     <div id="fx"></div>
   </div>`;
   fitStage(); addEventListener('resize', fitStage);
-  $('#mute').onclick = () => { Voice.muted = !Voice.muted; $('#mute').textContent = Voice.muted ? '🔇' : '🔊'; if (Voice.muted) try { speechSynthesis.cancel(); } catch (e) { } };
+  $('#mute').onclick = () => { Voice.muted = !Voice.muted; $('#mute').textContent = Voice.muted ? '🔇' : '🔊'; if (Voice.muted) stopSpeech(); };
   $('#sfxbtn').onclick = () => { SFX.on = !SFX.on; $('#sfxbtn').style.opacity = SFX.on ? 1 : .4; };
   buildBoardSVG();
 }
@@ -3973,7 +4011,7 @@ async function dynTF(parts, sc, D) {
     const q = drawQ(randTheme(), lv, x => x[0].length <= 80 && x[1].length <= 30);
     const truth = Math.random() < 0.5;
     const shown = truth ? q.opts[q.correct] : q.opts[pick([0, 1, 2, 3].filter(k => k !== q.correct))];
-    const lim = T(3000);
+    const lim = T(11000);   // 3 s + 8 s para dar tempo de ler
     const th = THEMES[q.th];
     const draw = (phase, ans, okSet) => overlay(`<div class="quiz tf ${phase}"><div class="qhead"><span class="qdyn">✅ V ou F Relâmpago</span><span class="qnum">${i + 1} de ${N}</span><span class="qtheme" style="--tc:${th.color}">${th.emoji} ${th.name}</span></div>
       <div class="qtext tfq">${esc(q.q)}</div><div class="tfa">${esc(shown)}</div>
@@ -4722,14 +4760,10 @@ function onMirror(m) {
   (m.fx || []).forEach(([k, a]) => onFx({ k, a }));
 }
 
+// convidados: mesma fila de falas do anfitrião (nunca corta no meio)
 function clientSpeak(text) {
-  if (FAST || Voice.muted || !('speechSynthesis' in window) || !text) return;
-  try {
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'pt-BR'; if (Voice.voice) u.voice = Voice.voice; u.rate = 1.08; u.pitch = 1.05;
-    speechSynthesis.speak(u);
-  } catch (e) { }
+  if (!text) return;
+  speakQueued({ text, silentMs: 0 });
 }
 const FXH = {
   coinFlight: (from, to, count) => coinFlight(from, to, count),
@@ -4763,7 +4797,7 @@ function onlineShell(isHost) {
       <div id="pbar"></div><div id="pmain"></div>
     </aside>
     <div id="soundgate"><div class="sg-box"><div class="sg-e">🎤</div><div class="sg-t">Clique para entrar no estúdio</div><div class="sg-s">O navegador só libera o som e a voz do Monc depois de um clique.</div></div></div>`;
-  $('#ovoice').onclick = () => { Voice.muted = !Voice.muted; $('#ovoice').textContent = Voice.muted ? '🔇' : '🔊'; if (Voice.muted) try { speechSynthesis.cancel(); } catch (e) { } };
+  $('#ovoice').onclick = () => { Voice.muted = !Voice.muted; $('#ovoice').textContent = Voice.muted ? '🔇' : '🔊'; if (Voice.muted) stopSpeech(); };
   $('#osfx').onclick = () => { SFX.on = !SFX.on; $('#osfx').style.opacity = SFX.on ? 1 : 0.4; };
   $('#soundgate').onclick = () => {
     SFX.init();

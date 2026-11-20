@@ -110,14 +110,10 @@ function onMirror(m) {
   (m.fx || []).forEach(([k, a]) => onFx({ k, a }));
 }
 
+// convidados: mesma fila de falas do anfitrião (nunca corta no meio)
 function clientSpeak(text) {
-  if (FAST || Voice.muted || !('speechSynthesis' in window) || !text) return;
-  try {
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'pt-BR'; if (Voice.voice) u.voice = Voice.voice; u.rate = 1.08; u.pitch = 1.05;
-    speechSynthesis.speak(u);
-  } catch (e) { }
+  if (!text) return;
+  speakQueued({ text, silentMs: 0 });
 }
 const FXH = {
   coinFlight: (from, to, count) => coinFlight(from, to, count),
@@ -151,7 +147,7 @@ function onlineShell(isHost) {
       <div id="pbar"></div><div id="pmain"></div>
     </aside>
     <div id="soundgate"><div class="sg-box"><div class="sg-e">🎤</div><div class="sg-t">Clique para entrar no estúdio</div><div class="sg-s">O navegador só libera o som e a voz do Monc depois de um clique.</div></div></div>`;
-  $('#ovoice').onclick = () => { Voice.muted = !Voice.muted; $('#ovoice').textContent = Voice.muted ? '🔇' : '🔊'; if (Voice.muted) try { speechSynthesis.cancel(); } catch (e) { } };
+  $('#ovoice').onclick = () => { Voice.muted = !Voice.muted; $('#ovoice').textContent = Voice.muted ? '🔇' : '🔊'; if (Voice.muted) stopSpeech(); };
   $('#osfx').onclick = () => { SFX.on = !SFX.on; $('#osfx').style.opacity = SFX.on ? 1 : 0.4; };
   $('#soundgate').onclick = () => {
     SFX.init();

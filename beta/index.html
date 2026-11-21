@@ -731,22 +731,6 @@ body.online.client #stage .conn{display:none}
 .clockp .ck-sc{font-family:var(--fd);font-size:16px;color:#fde047}
 .cklock{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;font-family:var(--fs);font-size:34px;color:#fff;background:rgba(127,29,29,.75);border-radius:18px}
 
-/* ===== reconexão ===== */
-.rejoin{position:absolute;left:18px;bottom:18px;z-index:40;width:200px;padding:12px;border-radius:18px;background:var(--paper);color:#1c1917;text-align:center;
-  box-shadow:0 14px 34px rgba(0,0,0,.55),inset 0 -8px 0 var(--paper2);transform:rotate(-2deg);animation:popin .35s}
-.rejoin.hidden{display:none}
-.rj-t{font-family:var(--fm);font-size:22px;line-height:1.1;margin-bottom:8px}
-.rj-qr{display:flex;justify-content:center;background:#fff;padding:6px;border-radius:10px}
-.rj-qr img,.rj-qr canvas{width:150px!important;height:150px!important}
-.rj-code{font-family:var(--fs);font-size:44px;letter-spacing:.1em;padding:10px 0}
-.rj-s{font-size:14px;font-weight:800;color:#44403c;margin-top:6px}
-.rj-who{display:flex;justify-content:center;gap:6px;margin-top:8px;flex-wrap:wrap}
-.rj-who .msav{width:38px;height:38px;font-size:22px;animation:pulseb .8s infinite alternate}
-.precon{position:fixed;left:10px;right:10px;top:10px;z-index:999;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:14px;
-  background:#7c2d12;color:#fff;font-family:var(--fd);font-size:16px;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:popin .25s}
-.precon button{border:0;border-radius:10px;padding:8px 12px;background:#fde047;color:#1c1917;font-family:var(--fd);font-size:15px}
-.ppl.claim b small{color:#fca5a5}
-
 </style>
 </head>
 <body>
@@ -1986,7 +1970,7 @@ function createTransport(room, onMsg, onStatus) {
     const bc = new BroadcastChannel('qp-' + room);
     bc.onmessage = e => onMsg(e.data);
     setTimeout(() => onStatus('ok'), 0);
-    return { send: m => bc.postMessage(m), reconnect: () => { } };
+    return { send: m => bc.postMessage(m) };
   }
   const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -2009,12 +1993,7 @@ function createTransport(room, onMsg, onStatus) {
     if (!badSince) badSince = Date.now();
     else if (Date.now() - badSince > 9000) { badSince = Date.now(); join(); }
   }, 3000);
-  let lastRe = 0;
-  return {
-    send: m => { try { ch && ch.send({ type: 'broadcast', event: 'm', payload: m }); } catch (e) { } },
-    // refaz o canal na hora (volta de outra aba, rede voltou, ou silêncio longo demais)
-    reconnect: () => { if (Date.now() - lastRe < 4000) return; lastRe = Date.now(); state = 'connecting'; badSince = 0; try { sb.realtime.disconnect(); } catch (e) { } try { sb.realtime.connect(); } catch (e) { } join(); },
-  };
+  return { send: m => { try { ch && ch.send({ type: 'broadcast', event: 'm', payload: m }); } catch (e) { } } };
 }
 
 /* =========================================================================
@@ -2233,20 +2212,17 @@ function sendSync() {
     delete ui._dl; delete ui._ms;
     ps[p.id] = { ui, me: meOf(p) };
   });
-  const cl = G.phase !== 'lobby' ? G.players.filter(p => !p.online).map(p => ({ id: p.id, name: p.name, emoji: p.emoji, color: p.color })) : [];
-  net.send({ t: 's', seq: ++seq, ph: G.phase, ps, rej: G.rej, taken: G.players.map(p => p.emoji), sh: G.shared || null, cl, claims: G.claims || {} });
+  net.send({ t: 's', seq: ++seq, ph: G.phase, ps, rej: G.rej, taken: G.players.map(p => p.emoji), sh: G.shared || null });
 }
 
-let lastTVMsg = Date.now();
 function onTVMsg(m) {
   if (!m || !G) return;
   if (m.t === 'join') return onJoin(m);
-  if (m.t === 'claim') return onClaim(m);
   if (m.t === 'mreq') { mFullReq(); return; }
   const p = m.pid && P(m.pid);
   if (!p) return;
   p.lastSeen = Date.now();
-  if (!p.online) { p.online = true; renderSide(); announceBack(p); }
+  if (!p.online) { p.online = true; renderSide(); }
   if (m.t === 'hello') { scheduleSync(); return; }
   if (m.t === 'prog') { if (G.live && m.uid === (p.ui && p.ui.id)) { G.live[p.id] = m.v; renderLive && renderLive(); } return; }
   if (m.t === 'act') {
@@ -2258,37 +2234,15 @@ function onTVMsg(m) {
   }
 }
 
-// feedback para todos quando alguém volta
-function announceBack(p) {
-  if (!G || G.phase === 'lobby') return;
-  SFX.pop(); floatText(p, '🔌 voltou!', '#86efac');
-  banner('🔌', `${p.name} reconectou!`, 'De volta ao show, de onde parou', 2000);
-  renderRejoin();
-}
-// um aparelho sem crachá assume uma vaga que está offline (só jogadores que já estavam na partida)
-function onClaim(m) {
-  const p = P(m.id);
-  if (!p || !m.pid || G.phase === 'lobby') return;
-  if (p.online && Date.now() - (p.lastSeen || 0) < 16000) { scheduleSync(); return; }   // ainda está conectado em outro aparelho
-  G.claims = G.claims || {};
-  G.claims[m.pid] = p.id;
-  delete G.rej[m.pid];
-  p.lastSeen = Date.now();
-  if (!p.online) { p.online = true; renderSide(); announceBack(p); }
-  scheduleSync();
-}
-
 function onJoin(m) {
   const name = String(m.name || '').trim().slice(0, 14) || 'Jogador';
   let p = P(m.pid);
   if (p) {
-    const was = p.online;
     p.online = true; p.lastSeen = Date.now();
-    if (!was) announceBack(p);
     if (G.phase === 'lobby') { p.name = name; if (!G.players.some(o => o !== p && o.emoji === m.emoji) && AVATARS.includes(m.emoji)) p.emoji = m.emoji; }
     renderLobby(); renderSide(); scheduleSync(); return;
   }
-  if (G.phase !== 'lobby') { G.rej[m.pid] = 'claim'; scheduleSync(); return; }   // pode reassumir uma vaga offline
+  if (G.phase !== 'lobby') { G.rej[m.pid] = 'started'; scheduleSync(); return; }
   if (G.players.length >= MAX_PLAYERS) { G.rej[m.pid] = 'full'; scheduleSync(); return; }
   let emoji = AVATARS.includes(m.emoji) ? m.emoji : AVATARS[0];
   if (G.players.some(o => o.emoji === emoji)) emoji = AVATARS.find(a => !G.players.some(o => o.emoji === a));
@@ -2309,27 +2263,9 @@ function onJoin(m) {
 setInterval(() => {    // marca quem está offline
   if (!G) return;
   let ch = false;
-  G.players.forEach(p => { const on = Date.now() - (p.lastSeen || 0) < 16000; if (on !== p.online) { p.online = on; ch = true; if (!on && G.phase !== 'lobby') { floatText(p, '📵 caiu', '#fca5a5'); } } });
-  if (ch) { renderSide(); renderLobby(); renderRejoin(); scheduleSync(); }
-  // TV/anfitrião: se ninguém fala com a gente há muito tempo, refaz o canal
-  if (net && net.reconnect && G.players.some(p => !(G.online && p.id === PH.pid)) && Date.now() - lastTVMsg > 12000) { lastTVMsg = Date.now(); net.reconnect(); }
+  G.players.forEach(p => { const on = Date.now() - (p.lastSeen || 0) < 16000; if (on !== p.online) { p.online = on; ch = true; } });
+  if (ch) { renderSide(); renderLobby(); }
 }, 4000);
-
-// cartão "caiu? escaneie para voltar" no canto da TV, só quando alguém está offline
-let rejoinQR = false;
-function renderRejoin() {
-  const el = $('#rejoin'); if (!el || !G) return;
-  const off = G.phase !== 'lobby' && G.phase !== 'final' ? G.players.filter(p => !p.online && !(G.online && p.id === PH.pid)) : [];
-  el.classList.toggle('hidden', !off.length);
-  if (!off.length) return;
-  $('#rj-who').innerHTML = off.map(p => `<span class="msav" style="background:${p.color}">${p.emoji}</span>`).join('');
-  if (!rejoinQR) {
-    rejoinQR = true;
-    const box = $('#rj-qr');
-    if (G.online || typeof QRCode === 'undefined') box.innerHTML = `<div class="rj-code">${G.room}</div>`;
-    else try { new QRCode(box, { text: joinURL(), width: 150, height: 150, colorDark: '#0f172a', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); } catch (e) { box.innerHTML = `<div class="rj-code">${G.room}</div>`; }
-  }
-}
 
 function save() { try { localStorage.setItem('qp_tv', JSON.stringify({ G, ts: Date.now() })); } catch (e) { } }
 
@@ -2460,7 +2396,6 @@ function buildTV(container) {
       <div id="side"><div id="plist"></div></div>
     </div>
     <div id="host"><div id="bubble">Boa noite! Eu sou o Monc, e este é o meu show!</div>${hostSVG()}<div class="dirsign">📣 O DIRETOR MANDOU</div><div class="hostname">MONC <small>& Alphie</small></div></div>
-    <div id="rejoin" class="rejoin hidden"><div class="rj-t">📵 Caiu? Volte aqui!</div><div id="rj-qr" class="rj-qr"></div><div class="rj-s">mesmo link da sala · toque no seu nome</div><div id="rj-who" class="rj-who"></div></div>
     <div id="hud"><div id="applause" class="applause">👏 APLAUSOS</div><div id="clock" class="clock hidden"></div><div id="gate" class="gate hidden"></div></div>
     <div id="ov"></div>
     <div id="fx"></div>
@@ -2721,7 +2656,6 @@ function renderSide() {
     </div>`).join('');
   const ti = $('#turninfo');
   const nd = G.nextDyn && DYNS[G.nextDyn];
-  renderRejoin();
   if (ti) ti.innerHTML = `<span class="turnpill">Turno <b>${Math.min(G.turn, G.maxTurns)}</b> de ${G.maxTurns}</span>${finalStretch() ? '<span class="finalpill">🔥 RETA FINAL</span>' : ''}${G.reverseTurn === G.turn ? '<span class="revpill">🔄 Todos andam ao contrário</span>' : G.reverseTurn === G.turn + 1 ? '<span class="revpill soon">🔄 Próximo turno: ao contrário</span>' : ''}${nd && G.phase !== 'final' ? `<span class="nextpill">📺 Próximo Monquiz: <b>${nd.e} ${nd.n}</b></span>` : ''}`;
   renderBoard();
 }
@@ -4361,7 +4295,7 @@ function tvMain(resume, opts = {}) {
     G.players.forEach(p => { p.online = false; p.lastSeen = Date.now(); waitUI(p, '🔄 Retomando a partida…'); });
   } else { G = newGame(makeRoom()); if (opts.online) G.online = true; }
   $('#roomtag').textContent = 'Sala ' + G.room;
-  net = createTransport(G.room, m => { lastTVMsg = Date.now(); onTVMsg(m); }, setConn);   // lastTVMsg: só mensagens que vieram pela rede
+  net = createTransport(G.room, onTVMsg, setConn);
   if (G.online) {   // o anfitrião também joga: as telas dele chegam direto, sem passar pela rede
     const raw = net.send;
     net.send = m => { raw(m); if (m.t === 's') setTimeout(() => onPhoneMsg(m), 0); };
@@ -4393,17 +4327,15 @@ function phoneMain(room) {
 function phoneCore(room, opts = {}) {
   PH.room = room.toUpperCase(); PH.online = !!(opts.online || opts.local); PH.isHost = !!opts.local;
   const ls = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-  // crachá: vem do link (aba restaurada) ou do armazenamento do navegador
-  const urlId = !opts.local && PARAMS.get('id');
-  PH.pid = urlId || ls('qp_pid_' + LSX + PH.room) || uid();
-  try { localStorage.setItem('qp_pid_' + LSX + PH.room, PH.pid); if (urlId) localStorage.setItem('qp_joined_' + LSX + PH.room, '1'); } catch (e) { }
+  PH.pid = ls('qp_pid_' + LSX + PH.room) || uid();
+  try { localStorage.setItem('qp_pid_' + LSX + PH.room, PH.pid); } catch (e) { }
   PH.name = ls('qp_name' + LSX) || '';
   PH.emoji = ls('qp_emoji' + LSX) || pick(AVATARS);
   if (opts.local) { PH.net = { send: m => setTimeout(() => onTVMsg(m), 0) }; PH.conn = true; }
   else PH.net = createTransport(PH.room, m => { if (m && m.t === 's') onPhoneMsg(m); else if (opts.onMsg) opts.onMsg(m); },
     st => { PH.conn = st === 'ok'; renderBar(); if (PH.conn) { PH.net.send({ t: 'hello', pid: PH.pid }); if (opts.onConnect) opts.onConnect(); } });
   const wasJoined = opts.local || ls('qp_joined_' + LSX + PH.room) === '1';
-  if (wasJoined && (PH.name || urlId)) { PH.joined = true; sendJoin(); showMsg(opts.local ? '🎬 Abrindo a sala…' : '🔄 Conectando…', opts.local ? '' : 'Procurando ' + (PH.online ? 'o anfitrião' : 'a TV') + ' da sala ' + PH.room); }
+  if (wasJoined && PH.name) { PH.joined = true; sendJoin(); showMsg(opts.local ? '🎬 Abrindo a sala…' : '🔄 Conectando…', opts.local ? '' : 'Procurando ' + (PH.online ? 'o anfitrião' : 'a TV') + ' da sala ' + PH.room); }
   else renderJoin();
   setInterval(() => {
     if (PH.pendingAct && PH.pendingAct.uid === PH.cur.id) PH.net.send(PH.pendingAct.msg);
@@ -4411,55 +4343,7 @@ function phoneCore(room, opts = {}) {
     if (PH.joined && !PH.me) sendJoin();
   }, 1300);
   setInterval(() => { if (PH.joined) PH.net.send({ t: 'hello', pid: PH.pid }); renderBar(); }, 5000);
-  // vigia: a TV manda atualização a cada 2,5 s; silêncio de 6 s = canal morto, refaz na hora
-  const startedAt = Date.now();
-  setInterval(() => {
-    if (opts.local) return;
-    const quiet = Date.now() - (PH.lastMsg || startedAt);
-    reconBar(quiet > 6000);
-    if (quiet > 6000 && PH.net.reconnect) PH.net.reconnect();
-  }, 2000);
-  const back = () => {
-    if (document.hidden) return;
-    keepAwake();
-    if (!opts.local && PH.net.reconnect && Date.now() - (PH.lastMsg || 0) > 3000) PH.net.reconnect();
-    PH.net.send({ t: 'hello', pid: PH.pid });
-    if (PH.joined) sendJoin();
-  };
-  document.addEventListener('visibilitychange', back);
-  window.addEventListener('pageshow', back);
-  window.addEventListener('online', back);
-  window.addEventListener('focus', back);
-}
-
-// aviso "reconectando" no celular
-function reconBar(show) {
-  let el = $('#precon');
-  if (!show) { if (el) el.remove(); return; }
-  if (el) return;
-  el = document.createElement('div'); el.id = 'precon'; el.className = 'precon';
-  el.innerHTML = `<span>🔄 Reconectando ao show…</span><button onclick="location.reload()">Recarregar</button>`;
-  document.body.appendChild(el);
-}
-// coloca o crachá no link, para a aba restaurada voltar identificada
-function stampURL() {
-  if (PH.isHost) return;
-  try { const u = new URL(location.href); if (u.searchParams.get('id') !== PH.pid) { u.searchParams.set('id', PH.pid); history.replaceState(null, '', u.toString()); } } catch (e) { }
-}
-// "Quem é você?": aparelho sem crachá no meio da partida escolhe a própria vaga (só as offline)
-function renderClaim(list) {
-  const key = JSON.stringify(list);
-  if (PH.claimKey === key && $('#claimbox')) return;
-  PH.claimKey = key;
-  $('#pmain').innerHTML = `<div class="pchoose" id="claimbox"><div class="pc-t">🔌 A partida já começou</div>
-    <div class="pc-s">Você estava jogando e caiu? Toque no seu nome para voltar de onde parou.</div>
-    ${list.length ? `<div class="plist">${list.map(o => `<button class="ppl claim" data-id="${o.id}" style="--pc:${o.color}"><span class="pbav" style="background:${o.color}">${o.emoji}</span><b>${esc(o.name)}<small>offline · toque para voltar</small></b></button>`).join('')}</div>`
-      : `<div class="pwait"><div class="pw-msg">⏳ Procurando sua vaga…</div><div class="pw-sub">Se você estava jogando, seu nome aparece aqui em até 15 segundos, assim que a TV perceber que você saiu.<br>Jogadores novos não entram no meio da partida.</div></div>`}</div>`;
-  $('#pmain').querySelectorAll('.claim').forEach(b => b.onclick = () => {
-    PH.claimKey = null;
-    PH.net.send({ t: 'claim', pid: PH.pid, id: b.dataset.id });
-    showMsg('🔌 Voltando para o show…', 'Conferindo sua vaga');
-  });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { PH.net.send({ t: 'hello', pid: PH.pid }); keepAwake(); } });
 }
 
 let wakeLock = null;
@@ -4494,16 +4378,6 @@ function onPhoneMsg(m) {
   PH.lastMsg = Date.now();
   PH.taken = m.taken || [];
   if (m.sh !== undefined) PH.sh = m.sh;
-  reconBar(false);
-  // vaga confirmada: este aparelho assume o crachá do jogador
-  const claimed = m.claims && m.claims[PH.pid];
-  if (claimed && claimed !== PH.pid) {
-    PH.pid = claimed; PH.joined = true; PH.cur = { id: -1 }; PH.claimKey = null;
-    try { localStorage.setItem('qp_pid_' + LSX + PH.room, PH.pid); localStorage.setItem('qp_joined_' + LSX + PH.room, '1'); } catch (e) { }
-    stampURL(); sendJoin(); keepAwake();
-  }
-  // aparelho novo no meio da partida: vai direto para o "Quem é você?"
-  if (!PH.joined && m.ph && m.ph !== 'lobby' && !PH.isHost) { renderClaim(m.cl || []); return; }
   if (!PH.joined) {
     $('#avs') && $('#avs').querySelectorAll('.av').forEach(b => b.classList.toggle('taken', PH.taken.includes(b.dataset.a) && b.dataset.a !== PH.emoji));
     return;
@@ -4511,7 +4385,6 @@ function onPhoneMsg(m) {
   const rj = m.rej && m.rej[PH.pid];
   const mine = m.ps && m.ps[PH.pid];
   if (!mine) {
-    if (rj === 'claim' || rj === 'started') { renderClaim(m.cl || []); return; }
     if (rj) {
       PH.joined = false; try { localStorage.removeItem('qp_joined_' + LSX + PH.room); } catch (e) { }
       const msgs = { full: 'A sala está cheia (8 jogadores).', started: PH.online ? 'A partida já começou. Dá para assistir pelo tabuleiro ao lado.' : 'A partida já começou sem você.', kicked: 'Você foi removido da sala.' };
@@ -4519,8 +4392,7 @@ function onPhoneMsg(m) {
     }
     return;
   }
-  if (!PH.me) stampURL();
-  PH.me = mine.me; renderBar(); PH.claimKey = null;
+  PH.me = mine.me; renderBar();
   const ui = mine.ui;
   if (ui && ui.id !== PH.cur.id) {
     PH.cur = ui; PH.pendingAct = null;

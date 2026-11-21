@@ -66,4 +66,4 @@ async def main():
         print('shots',shots)
         await b.close()
     print('\n'.join(errors[:40]) or 'no errors')
-asyncio.run(main())
+if __name__ == "__main__": asyncio.run(main())

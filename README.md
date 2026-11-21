@@ -16,6 +16,7 @@ Programa de auditório de baixo orçamento em forma de jogo: tabuleiro + quiz pa
 - As alternativas só aparecem no celular, depois do tempo de leitura (2 s + 0,25 s por palavra, até 7 s). "Continuar" só pula quando todos apertam.
 - Todos ganham Moncoins e um item pela colocação no Monquiz (o último leva um item arriscado).
 - **Modo 10+** no lobby: tira perguntas impróprias para crianças.
+- **Reconexão**: quem cair volta a qualquer momento pelo mesmo link/QR. Se o aparelho perdeu o "crachá" (outro navegador, aba anônima), aparece "Quem é você?" com os jogadores offline. Jogador novo não entra no meio da partida.
 
 ## Arquivos
 
@@ -67,4 +68,5 @@ Para rodar o teste:
 py -m http.server 8765
 py test.py          # modo TV + celular
 py test_online.py   # modo online (anfitrião + 2 convidados)
+py test_reconnect.py  # jogador cai no meio da partida e volta (3 jeitos)
 ```

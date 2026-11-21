@@ -717,3 +717,19 @@ body.online.client #stage .conn{display:none}
 .keypad{position:relative}
 .clockp .ck-sc{font-family:var(--fd);font-size:16px;color:#fde047}
 .cklock{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;font-family:var(--fs);font-size:34px;color:#fff;background:rgba(127,29,29,.75);border-radius:18px}
+
+/* ===== reconexão ===== */
+.rejoin{position:absolute;left:18px;bottom:18px;z-index:40;width:200px;padding:12px;border-radius:18px;background:var(--paper);color:#1c1917;text-align:center;
+  box-shadow:0 14px 34px rgba(0,0,0,.55),inset 0 -8px 0 var(--paper2);transform:rotate(-2deg);animation:popin .35s}
+.rejoin.hidden{display:none}
+.rj-t{font-family:var(--fm);font-size:22px;line-height:1.1;margin-bottom:8px}
+.rj-qr{display:flex;justify-content:center;background:#fff;padding:6px;border-radius:10px}
+.rj-qr img,.rj-qr canvas{width:150px!important;height:150px!important}
+.rj-code{font-family:var(--fs);font-size:44px;letter-spacing:.1em;padding:10px 0}
+.rj-s{font-size:14px;font-weight:800;color:#44403c;margin-top:6px}
+.rj-who{display:flex;justify-content:center;gap:6px;margin-top:8px;flex-wrap:wrap}
+.rj-who .msav{width:38px;height:38px;font-size:22px;animation:pulseb .8s infinite alternate}
+.precon{position:fixed;left:10px;right:10px;top:10px;z-index:999;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:14px;
+  background:#7c2d12;color:#fff;font-family:var(--fd);font-size:16px;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:popin .25s}
+.precon button{border:0;border-radius:10px;padding:8px 12px;background:#fde047;color:#1c1917;font-family:var(--fd);font-size:15px}
+.ppl.claim b small{color:#fca5a5}
